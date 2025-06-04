@@ -1,30 +1,15 @@
-def main():
-    st.title("🔍 Model Folder Search and Data Viewer")
+quarter_options = ["Q1", "Q2", "Q3", "Q4"]
 
-    st.header("Input Parameters")
+    # Dictionary to hold selected quarters for each model
+    model_quarters = {}
 
-    master_path = st.text_input("📁 Enter path to master folder")
-    model_id = st.text_input("🆔 Enter Model ID (partial or full)")
-    quarter = st.selectbox("🗓️ Select Quarter", ["Q1", "Q2", "Q3", "Q4"])
-    year = st.text_input("📆 Enter Year (e.g., 2025)")
-
-    if st.button("Search and Load Data"):
-        if not all([master_path, model_id, quarter, year]):
-            st.warning("Please provide all inputs.")
-            return
-
-        with st.spinner("🔍 Searching folders..."):
-            folders = find_matching_folder(master_path, model_id, quarter, year)
-
-        if not folders:
-            st.error("No matching folders found.")
-        else:
-            st.success(f"Found {len(folders)} matching folder(s). Showing first match:")
-            st.code(folders[0], language='bash')
-
-            df = load_data_from_folder(folders[0])
-            if df.empty:
-                st.warning("No CSV data found in the folder.")
-            else:
-                st.subheader("📊 Data Preview")
-                st.dataframe(df)
+    if selected_model_ids:
+        st.markdown("### Select Quarter(s) for Each Model ID")
+        for model_id in selected_model_ids:
+            quarters = st.multiselect(
+                f"📌 Quarters for Model ID {model_id}",
+                options=quarter_options,
+                key=f"{model_id}_quarters"
+            )
+            if quarters:
+                model_quarters[model_id] = quarters
