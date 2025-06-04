@@ -1,15 +1,73 @@
-quarter_options = ["Q1", "Q2", "Q3", "Q4"]
+def main():
+    st.title("🔍 Model Folder Search and Data Viewer")
 
-    # Dictionary to hold selected quarters for each model
-    model_quarters = {}
+    st.header("Input Parameters")
 
+    # Model ID options
+    model_id_list = ["12345", "23412", "23456", "34256", "65474"]
+
+    # Input: Master path
+    master_path = st.text_input("📁 Enter path to master folder")
+
+    # Input: Model ID selection
+    selected_model_ids = st.multiselect(
+        "🆔 Select Model ID(s)",
+        options=model_id_list
+    )
+
+    # Quarter options
+    quarter_options = ["Q1", "Q2", "Q3", "Q4"]
+
+    # Store quarters and years for each model
+    model_quarters_years = {}
+
+    # Input: Quarters and Years for each selected model
     if selected_model_ids:
-        st.markdown("### Select Quarter(s) for Each Model ID")
+        st.markdown("### 📌 Select Quarters and Year(s) for Each Model ID")
+
         for model_id in selected_model_ids:
             quarters = st.multiselect(
-                f"📌 Quarters for Model ID {model_id}",
+                f"📅 Quarters for Model ID {model_id}",
                 options=quarter_options,
                 key=f"{model_id}_quarters"
             )
-            if quarters:
-                model_quarters[model_id] = quarters
+
+            years = st.multiselect(
+                f"📆 Year(s) for Model ID {model_id}",
+                options=[str(y) for y in range(2015, 2031)],
+                key=f"{model_id}_years"
+            )
+
+            if quarters and years:
+                model_quarters_years[model_id] = {
+                    "quarters": quarters,
+                    "years": years
+                }
+
+    # Button to run search
+    if st.button("Search and Load Data"):
+        if not master_path or not model_quarters_years:
+            st.warning("Please provide master path and at least one model ID with quarters and years.")
+            return
+
+        all_folders = []
+
+        with st.spinner("🔍 Searching folders..."):
+            for model_id, selections in model_quarters_years.items():
+                for quarter in selections["quarters"]:
+                    for year in selections["years"]:
+                        folders = find_matching_folder(master_path, model_id, quarter, year)
+                        all_folders.extend(folders)
+
+        if not all_folders:
+            st.error("No matching folders found.")
+        else:
+            st.success(f"Found {len(all_folders)} matching folder(s). Showing first match:")
+            st.code(all_folders[0], language='bash')
+
+            df = load_data_from_folder(all_folders[0])
+            if df.empty:
+                st.warning("No CSV data found in the folder.")
+            else:
+                st.subheader("📊 Data Preview")
+                st.dataframe(df)
