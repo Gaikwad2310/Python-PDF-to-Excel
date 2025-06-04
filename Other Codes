@@ -1,73 +1,50 @@
-def main():
-    st.title("🔍 Model Folder Search and Data Viewer")
+import os
 
-    st.header("Input Parameters")
+def generate_possible_quarter_formats(quarter, year):
+    """Generate possible folder name formats for a given quarter and year."""
+    q = quarter.upper().replace(" ", "").replace("_", "").replace("-", "")
+    y = str(year)
+    yy = y[-2:]
 
-    # Model ID options
-    model_id_list = ["12345", "23412", "23456", "34256", "65474"]
+    return {
+        f"{q}{yy}",      # Q125
+        f"{y}Q{q[1]}",   # 2025Q1
+        f"{q}_{yy}",     # Q1_25
+        f"{q}_{y}",      # Q1_2025
+        f"{yy}Q{q[1]}",  # 25Q1
+        f"{q[1]}Q{yy}",  # 1Q25
+    }
 
-    # Input: Master path
-    master_path = st.text_input("📁 Enter path to master folder")
+def find_monitoring_pdfs(master_folder, model_quarter_year_dict):
+    """Find PDFs using model_id => {quarters, years} mapping."""
+    matching_pdfs = []
 
-    # Input: Model ID selection
-    selected_model_ids = st.multiselect(
-        "🆔 Select Model ID(s)",
-        options=model_id_list
-    )
+    for root, dirs, files in os.walk(master_folder):
+        folder_name = os.path.basename(root).lower()
 
-    # Quarter options
-    quarter_options = ["Q1", "Q2", "Q3", "Q4"]
+        # Check for any model ID present in this folder
+        for model_id, filters in model_quarter_year_dict.items():
+            if model_id.lower() in folder_name:
+                quarters = filters.get("quarters", [])
+                years = filters.get("years", [])
+                
+                # All valid folder name formats for this model
+                valid_formats = set()
+                for year in years:
+                    for quarter in quarters:
+                        valid_formats.update(generate_possible_quarter_formats(quarter, year))
 
-    # Store quarters and years for each model
-    model_quarters_years = {}
+                # Search in "monitoring" subfolder
+                for dir_name in dirs:
+                    if "monitoring" in dir_name.lower():
+                        monitoring_path = os.path.join(root, dir_name)
 
-    # Input: Quarters and Years for each selected model
-    if selected_model_ids:
-        st.markdown("### 📌 Select Quarters and Year(s) for Each Model ID")
-
-        for model_id in selected_model_ids:
-            quarters = st.multiselect(
-                f"📅 Quarters for Model ID {model_id}",
-                options=quarter_options,
-                key=f"{model_id}_quarters"
-            )
-
-            years = st.multiselect(
-                f"📆 Year(s) for Model ID {model_id}",
-                options=[str(y) for y in range(2015, 2031)],
-                key=f"{model_id}_years"
-            )
-
-            if quarters and years:
-                model_quarters_years[model_id] = {
-                    "quarters": quarters,
-                    "years": years
-                }
-
-    # Button to run search
-    if st.button("Search and Load Data"):
-        if not master_path or not model_quarters_years:
-            st.warning("Please provide master path and at least one model ID with quarters and years.")
-            return
-
-        all_folders = []
-
-        with st.spinner("🔍 Searching folders..."):
-            for model_id, selections in model_quarters_years.items():
-                for quarter in selections["quarters"]:
-                    for year in selections["years"]:
-                        folders = find_matching_folder(master_path, model_id, quarter, year)
-                        all_folders.extend(folders)
-
-        if not all_folders:
-            st.error("No matching folders found.")
-        else:
-            st.success(f"Found {len(all_folders)} matching folder(s). Showing first match:")
-            st.code(all_folders[0], language='bash')
-
-            df = load_data_from_folder(all_folders[0])
-            if df.empty:
-                st.warning("No CSV data found in the folder.")
-            else:
-                st.subheader("📊 Data Preview")
-                st.dataframe(df)
+                        for subfolder in os.listdir(monitoring_path):
+                            if subfolder in valid_formats:
+                                quarter_path = os.path.join(monitoring_path, subfolder)
+                                if os.path.isdir(quarter_path):
+                                    for file in os.listdir(quarter_path):
+                                        if file.lower().endswith(".pdf") and "mon" in file.lower():
+                                            matching_pdfs.append(os.path.join(quarter_path, file))
+                                            
+    return matching_pdfs
