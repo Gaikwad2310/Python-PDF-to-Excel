@@ -1,85 +1,39 @@
-def get_user_inputs():
-    st.sidebar.title("🧭 Input Panel")
+import pandas as pd
 
-    model_id_list = ["12345", "23412", "23456", "34256", "65474"]
-    quarter_options = ["Q1", "Q2", "Q3", "Q4"]
-    year_options = [str(y) for y in range(2015, 2031)]
+# Sample DataFrame
+data = {
+    'ID': ['A', 'A', 'B', 'B', 'C'],
+    'Color1': ['green', 'blue', 'green', 'red', 'green'],
+    'Color2': ['red', 'green', 'blue', 'green', 'yellow'],
+    'Color3': ['green', 'green', 'red', 'blue', 'green']
+}
 
-    master_path = st.sidebar.text_input("📁 Master Folder Path", placeholder="E.g., C:/Users/YourName/Models")
+df = pd.DataFrame(data)
 
-    selected_model_ids = st.sidebar.multiselect("🆔 Choose Model IDs", options=model_id_list)
+# Parameters
+id_column = 'ID'
+last_column = df.columns[-1]
+colors_to_count = ['green', 'red', 'blue']
 
-    model_quarters_years = {}
-    if selected_model_ids:
-        for model_id in selected_model_ids:
-            with st.sidebar.expander(f"📌 Quarters & Years for {model_id}", expanded=False):
-                quarters = st.multiselect(f"Quarters", quarter_options, key=f"{model_id}_q")
-                years = st.multiselect(f"Years", year_options, key=f"{model_id}_y")
-                if quarters and years:
-                    model_quarters_years[model_id] = {"quarters": quarters, "years": years}
+# Step 1: Count color occurrences in the last column
+sub_df = df[[id_column, last_column]]
+color_counts = (
+    sub_df[sub_df[last_column].isin(colors_to_count)]
+    .groupby([id_column, last_column])
+    .size()
+    .unstack(fill_value=0)
+    .reset_index()
+)
 
-    return {
-        "master_path": master_path,
-        "model_quarters_years": model_quarters_years
-    }
+# Step 2: Count how many times each ID appears in the original DataFrame
+id_counts = df[id_column].value_counts().reset_index()
+id_counts.columns = [id_column, 'total_rows']
 
-def main():
-    st.set_page_config(page_title="📂 Model Folder Viewer", layout="wide")
-    st.title("📂 Model Folder Search & Data Viewer")
-    st.markdown("Use the sidebar to select model IDs, quarters, and years. Then hit **Search and Load** to view data.")
+# Step 3: Merge color counts and ID counts
+result = pd.merge(id_counts, color_counts, on=id_column, how='left').fillna(0)
 
-    inputs = get_user_inputs()
-    master_path = inputs["master_path"]
-    model_quarters_years = inputs["model_quarters_years"]
+# Step 4: Ensure integer type for counts
+for col in colors_to_count:
+    result[col] = result[col].astype(int)
 
-    st.markdown("---")
-    st.subheader("📋 Selected Inputs Summary")
-
-    if not master_path:
-        st.info("ℹ️ Enter the master folder path in the sidebar.")
-    else:
-        st.markdown(f"✅ **Master Path:** `{master_path}`")
-
-    if not model_quarters_years:
-        st.warning("⚠️ No model data selected yet.")
-    else:
-        for mid, val in model_quarters_years.items():
-            st.markdown(f"- **Model `{mid}`** → Quarters: `{', '.join(val['quarters'])}` | Years: `{', '.join(val['years'])}`")
-
-    st.markdown("---")
-
-    if st.button("🚀 Search and Load Data"):
-        if not master_path or not model_quarters_years:
-            st.error("🚫 Please complete all input fields before proceeding.")
-            return
-
-        all_folders = []
-        with st.spinner("🔍 Looking for matching folders..."):
-            for model_id, selections in model_quarters_years.items():
-                for quarter in selections["quarters"]:
-                    for year in selections["years"]:
-                        folders = find_matching_folder(master_path, model_id, quarter, year)
-                        all_folders.extend(folders)
-
-        if not all_folders:
-            st.error("❌ No folders found with the selected criteria.")
-            return
-
-        st.success(f"✅ Found {len(all_folders)} folder(s).")
-
-        for idx, folder in enumerate(all_folders):
-            with st.expander(f"📁 Folder {idx + 1}: {folder}"):
-                df = load_data_from_folder(folder)
-                if df.empty:
-                    st.warning("⚠️ No CSV files or empty data found.")
-                else:
-                    st.dataframe(df, use_container_width=True)
-
-                    # Download option
-                    csv = df.to_csv(index=False).encode("utf-8")
-                    st.download_button(
-                        label="⬇️ Download CSV",
-                        data=csv,
-                        file_name=f"data_{idx+1}.csv",
-                        mime="text/csv"
-                    )
+print(result)
