@@ -1,11 +1,11 @@
 import pandas as pd
 
-# Sample data
+# Sample data including other colors
 df = pd.DataFrame({
-    'ID': ['A', 'A', 'B', 'B', 'C'],
-    'Color1': ['green', 'blue', 'green', 'red', 'green'],
-    'Color2': ['red', 'green', 'blue', 'green', 'yellow'],
-    'Color3': ['green', 'green', 'red', 'blue', 'green']
+    'ID': ['A', 'A', 'B', 'B', 'C', 'C', 'D'],
+    'Color1': ['green', 'blue', 'green', 'red', 'green', 'black', 'white'],
+    'Color2': ['red', 'green', 'blue', 'green', 'yellow', 'white', 'black'],
+    'Color3': ['green', 'yellow', 'red', 'blue', 'green', 'black', 'white']  # last column
 })
 
 # Parameters
@@ -13,46 +13,20 @@ id_col = 'ID'
 last_col = df.columns[-1]
 colors = ['green', 'red', 'blue']
 
-# Count colors in last column
-color_counts = df[df[last_col].isin(colors)].groupby([id_col, last_col]).size().unstack(fill_value=0)
+# Count total number of rows per ID
+total_rows = df.groupby(id_col).size().rename('total_rows')
 
-# Count total rows per ID
-row_counts = df[id_col].value_counts().rename('total_rows')
+# Count only specified colors in the last column
+filtered = df[df[last_col].isin(colors)]
+color_counts = filtered.groupby([id_col, last_col]).size().unstack(fill_value=0)
 
-# Merge and clean
-result = row_counts.to_frame().merge(color_counts, left_index=True, right_index=True, how='left').fillna(0).reset_index()
+# Ensure all target color columns exist
+for color in colors:
+    if color not in color_counts.columns:
+        color_counts[color] = 0
+
+# Combine total rows with color counts
+result = pd.concat([total_rows, color_counts[colors]], axis=1).fillna(0).reset_index()
 result[colors] = result[colors].astype(int)
-
-print(result)
-
-import pandas as pd
-
-# Sample data
-df = pd.DataFrame({
-    'ID': ['A', 'A', 'B', 'B', 'C'],
-    'Color1': ['green', 'blue', 'green', 'red', 'green'],
-    'Color2': ['red', 'green', 'blue', 'green', 'yellow'],
-    'Color3': ['green', 'green', 'red', 'blue', 'green']
-})
-
-# Parameters
-id_col = 'ID'
-last_col = df.columns[-1]
-colors = ['green', 'red', 'blue']
-
-# Count total rows per ID
-row_counts = df.groupby(id_col).size().rename('total_rows')
-
-# Count specific colors in the last column
-color_counts = (
-    df[df[last_col].isin(colors)]
-    .groupby([id_col, last_col])
-    .size()
-    .unstack(fill_value=0)
-)
-
-# Combine results
-result = pd.concat([row_counts, color_counts], axis=1).fillna(0).reset_index()
-result[colors] = result[colors].astype(int)  # Ensure proper integer types
 
 print(result)
