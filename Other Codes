@@ -1,39 +1,58 @@
 import pandas as pd
 
-# Sample DataFrame
-data = {
+# Sample data
+df = pd.DataFrame({
     'ID': ['A', 'A', 'B', 'B', 'C'],
     'Color1': ['green', 'blue', 'green', 'red', 'green'],
     'Color2': ['red', 'green', 'blue', 'green', 'yellow'],
     'Color3': ['green', 'green', 'red', 'blue', 'green']
-}
-
-df = pd.DataFrame(data)
+})
 
 # Parameters
-id_column = 'ID'
-last_column = df.columns[-1]
-colors_to_count = ['green', 'red', 'blue']
+id_col = 'ID'
+last_col = df.columns[-1]
+colors = ['green', 'red', 'blue']
 
-# Step 1: Count color occurrences in the last column
-sub_df = df[[id_column, last_column]]
+# Count colors in last column
+color_counts = df[df[last_col].isin(colors)].groupby([id_col, last_col]).size().unstack(fill_value=0)
+
+# Count total rows per ID
+row_counts = df[id_col].value_counts().rename('total_rows')
+
+# Merge and clean
+result = row_counts.to_frame().merge(color_counts, left_index=True, right_index=True, how='left').fillna(0).reset_index()
+result[colors] = result[colors].astype(int)
+
+print(result)
+
+import pandas as pd
+
+# Sample data
+df = pd.DataFrame({
+    'ID': ['A', 'A', 'B', 'B', 'C'],
+    'Color1': ['green', 'blue', 'green', 'red', 'green'],
+    'Color2': ['red', 'green', 'blue', 'green', 'yellow'],
+    'Color3': ['green', 'green', 'red', 'blue', 'green']
+})
+
+# Parameters
+id_col = 'ID'
+last_col = df.columns[-1]
+colors = ['green', 'red', 'blue']
+
+# Count total rows per ID
+row_counts = df.groupby(id_col).size().rename('total_rows')
+
+# Count specific colors in the last column
 color_counts = (
-    sub_df[sub_df[last_column].isin(colors_to_count)]
-    .groupby([id_column, last_column])
+    df[df[last_col].isin(colors)]
+    .groupby([id_col, last_col])
     .size()
     .unstack(fill_value=0)
-    .reset_index()
 )
 
-# Step 2: Count how many times each ID appears in the original DataFrame
-id_counts = df[id_column].value_counts().reset_index()
-id_counts.columns = [id_column, 'total_rows']
-
-# Step 3: Merge color counts and ID counts
-result = pd.merge(id_counts, color_counts, on=id_column, how='left').fillna(0)
-
-# Step 4: Ensure integer type for counts
-for col in colors_to_count:
-    result[col] = result[col].astype(int)
+# Combine results
+result = pd.concat([row_counts, color_counts], axis=1).fillna(0).reset_index()
+result[colors] = result[colors].astype(int)  # Ensure proper integer types
 
 print(result)
