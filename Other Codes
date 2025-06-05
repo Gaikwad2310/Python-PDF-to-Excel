@@ -2,46 +2,55 @@ import streamlit as st
 import pandas as pd
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
-# Sample dataframe
-data = {
-    "ID": [101, 102, 103],
-    "Name": ["Alice", "Bob", "Charlie"],
-    "Score": [88, 92, 79]
-}
-df = pd.DataFrame(data)
+def display_clickable_aggrid(df: pd.DataFrame):
+    """
+    Display a dataframe using AgGrid and return info about the last clicked cell.
 
-st.write("### Click on any cell in the table below:")
+    Returns:
+        dict or None: {'row': int, 'col': str, 'value': any} or None if no cell clicked.
+    """
+    gb = GridOptionsBuilder.from_dataframe(df)
+    gb.configure_default_column(editable=False, filter=True, sortable=True)
+    gb.configure_grid_options(singleClickEdit=False)
+    gb.configure_selection(selection_mode='single', use_checkbox=False, rowMultiSelectWithClick=False)
+    gridOptions = gb.build()
 
-# Build grid options with cell click enabled
-gb = GridOptionsBuilder.from_dataframe(df)
-gb.configure_default_column(editable=False, filter=True, sortable=True)
+    grid_response = AgGrid(
+        df,
+        gridOptions=gridOptions,
+        update_mode=GridUpdateMode.CELL_CLICKED,
+        allow_unsafe_jscode=True,
+        theme='blue',
+        height=250,
+        fit_columns_on_grid_load=True,
+    )
 
-# Enable single cell selection
-gb.configure_grid_options(singleClickEdit=False)
-gb.configure_selection(selection_mode='single', use_checkbox=False, rowMultiSelectWithClick=False)
+    last_clicked = grid_response.get('last_clicked_cell', None)
+    if last_clicked:
+        row = last_clicked['rowIndex']
+        col = last_clicked['column']['colId']
+        value = df.iloc[row][col]
+        return {'row': row, 'col': col, 'value': value}
+    return None
 
-gridOptions = gb.build()
+def main():
+    df = pd.DataFrame({
+        "ID": [101, 102, 103],
+        "Name": ["Alice", "Bob", "Charlie"],
+        "Score": [88, 92, 79]
+    })
 
-# Display the grid with cell selection enabled
-grid_response = AgGrid(
-    df,
-    gridOptions=gridOptions,
-    update_mode=GridUpdateMode.CELL_CLICKED,  # Update on cell click
-    allow_unsafe_jscode=True,
-    theme='blue',
-    height=250,
-    fit_columns_on_grid_load=True,
-)
+    st.write("### Click any cell in the table below:")
 
-# The cell clicked info is in 'lastClickedCell' key of grid_response['data'] is just the dataframe,
-# but selection is in 'selected_rows', for cell click use grid_response['last_clicked_cell']
+    clicked_cell = display_clickable_aggrid(df)
 
-last_clicked = grid_response.get('last_clicked_cell', None)
+    if clicked_cell:
+        st.success(
+            f"You clicked cell at row {clicked_cell['row']}, column '{clicked_cell['col']}' "
+            f"with value: **{clicked_cell['value']}**"
+        )
+    else:
+        st.info("Click any cell in the table above to see its value here.")
 
-if last_clicked:
-    row = last_clicked['rowIndex']
-    col = last_clicked['column']['colId']
-    value = df.iloc[row][col]
-    st.success(f"You clicked cell at row {row}, column '{col}' with value: **{value}**")
-else:
-    st.info("Click any cell in the table above to see its value here.")
+if __name__ == "__main__":
+    main()
