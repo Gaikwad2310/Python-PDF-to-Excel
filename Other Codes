@@ -1,32 +1,47 @@
+import streamlit as st
 import pandas as pd
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
-# Sample data including other colors
-df = pd.DataFrame({
-    'ID': ['A', 'A', 'B', 'B', 'C', 'C', 'D'],
-    'Color1': ['green', 'blue', 'green', 'red', 'green', 'black', 'white'],
-    'Color2': ['red', 'green', 'blue', 'green', 'yellow', 'white', 'black'],
-    'Color3': ['green', 'yellow', 'red', 'blue', 'green', 'black', 'white']  # last column
-})
+# Sample dataframe
+data = {
+    "ID": [101, 102, 103],
+    "Name": ["Alice", "Bob", "Charlie"],
+    "Score": [88, 92, 79]
+}
+df = pd.DataFrame(data)
 
-# Parameters
-id_col = 'ID'
-last_col = df.columns[-1]
-colors = ['green', 'red', 'blue']
+st.write("### Click on any cell in the table below:")
 
-# Count total number of rows per ID
-total_rows = df.groupby(id_col).size().rename('total_rows')
+# Build grid options with cell click enabled
+gb = GridOptionsBuilder.from_dataframe(df)
+gb.configure_default_column(editable=False, filter=True, sortable=True)
 
-# Count only specified colors in the last column
-filtered = df[df[last_col].isin(colors)]
-color_counts = filtered.groupby([id_col, last_col]).size().unstack(fill_value=0)
+# Enable single cell selection
+gb.configure_grid_options(singleClickEdit=False)
+gb.configure_selection(selection_mode='single', use_checkbox=False, rowMultiSelectWithClick=False)
 
-# Ensure all target color columns exist
-for color in colors:
-    if color not in color_counts.columns:
-        color_counts[color] = 0
+gridOptions = gb.build()
 
-# Combine total rows with color counts
-result = pd.concat([total_rows, color_counts[colors]], axis=1).fillna(0).reset_index()
-result[colors] = result[colors].astype(int)
+# Display the grid with cell selection enabled
+grid_response = AgGrid(
+    df,
+    gridOptions=gridOptions,
+    update_mode=GridUpdateMode.CELL_CLICKED,  # Update on cell click
+    allow_unsafe_jscode=True,
+    theme='blue',
+    height=250,
+    fit_columns_on_grid_load=True,
+)
 
-print(result)
+# The cell clicked info is in 'lastClickedCell' key of grid_response['data'] is just the dataframe,
+# but selection is in 'selected_rows', for cell click use grid_response['last_clicked_cell']
+
+last_clicked = grid_response.get('last_clicked_cell', None)
+
+if last_clicked:
+    row = last_clicked['rowIndex']
+    col = last_clicked['column']['colId']
+    value = df.iloc[row][col]
+    st.success(f"You clicked cell at row {row}, column '{col}' with value: **{value}**")
+else:
+    st.info("Click any cell in the table above to see its value here.")
