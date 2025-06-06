@@ -1,56 +1,33 @@
 import streamlit as st
-import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+import base64
+import os
 
-def display_clickable_aggrid(df: pd.DataFrame):
-    """
-    Display a dataframe using AgGrid and return info about the last clicked cell.
-
-    Returns:
-        dict or None: {'row': int, 'col': str, 'value': any} or None if no cell clicked.
-    """
-    gb = GridOptionsBuilder.from_dataframe(df)
-    gb.configure_default_column(editable=False, filter=True, sortable=True)
-    gb.configure_grid_options(singleClickEdit=False)
-    gb.configure_selection(selection_mode='single', use_checkbox=False, rowMultiSelectWithClick=False)
-    gridOptions = gb.build()
-
-    grid_response = AgGrid(
-        df,
-        gridOptions=gridOptions,
-        update_mode=GridUpdateMode.CELL_CLICKED,
-        allow_unsafe_jscode=True,
-        theme='blue',
-        height=250,
-        fit_columns_on_grid_load=True,
-    )
-
-    last_clicked = grid_response.get('last_clicked_cell', None)
-    if last_clicked:
-        row = last_clicked['rowIndex']
-        col = last_clicked['column']['colId']
-        value = df.iloc[row][col]
-        return {'row': row, 'col': col, 'value': value}
-    return None
+def open_pdf_button(pdf_path, label):
+    if os.path.exists(pdf_path):
+        with open(pdf_path, "rb") as f:
+            base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+        href = f'<a href="data:application/pdf;base64,{base64_pdf}" download="{os.path.basename(pdf_path)}" target="_blank">{label}</a>'
+        st.markdown(href, unsafe_allow_html=True)
+    else:
+        st.error(f"File not found: {pdf_path}")
 
 def main():
-    df = pd.DataFrame({
-        "ID": [101, 102, 103],
-        "Name": ["Alice", "Bob", "Charlie"],
-        "Score": [88, 92, 79]
-    })
+    st.title("PDF Viewer Buttons")
 
-    st.write("### Click any cell in the table below:")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Open PDF 1"):
+            open_pdf_button("files/doc1.pdf", "Click to open PDF 1")
 
-    clicked_cell = display_clickable_aggrid(df)
+        if st.button("Open PDF 2"):
+            open_pdf_button("files/doc2.pdf", "Click to open PDF 2")
 
-    if clicked_cell:
-        st.success(
-            f"You clicked cell at row {clicked_cell['row']}, column '{clicked_cell['col']}' "
-            f"with value: **{clicked_cell['value']}**"
-        )
-    else:
-        st.info("Click any cell in the table above to see its value here.")
+    with col2:
+        if st.button("Open PDF 3"):
+            open_pdf_button("files/doc3.pdf", "Click to open PDF 3")
+
+        if st.button("Open PDF 4"):
+            open_pdf_button("files/doc4.pdf", "Click to open PDF 4")
 
 if __name__ == "__main__":
     main()
