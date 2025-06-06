@@ -1,33 +1,20 @@
-import streamlit as st
-import base64
-import os
-
-def open_pdf_button(pdf_path, label):
-    if os.path.exists(pdf_path):
-        with open(pdf_path, "rb") as f:
-            base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-        href = f'<a href="data:application/pdf;base64,{base64_pdf}" download="{os.path.basename(pdf_path)}" target="_blank">{label}</a>'
-        st.markdown(href, unsafe_allow_html=True)
-    else:
-        st.error(f"File not found: {pdf_path}")
-
-def main():
-    st.title("PDF Viewer Buttons")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Open PDF 1"):
-            open_pdf_button("files/doc1.pdf", "Click to open PDF 1")
-
-        if st.button("Open PDF 2"):
-            open_pdf_button("files/doc2.pdf", "Click to open PDF 2")
-
-    with col2:
-        if st.button("Open PDF 3"):
-            open_pdf_button("files/doc3.pdf", "Click to open PDF 3")
-
-        if st.button("Open PDF 4"):
-            open_pdf_button("files/doc4.pdf", "Click to open PDF 4")
-
-if __name__ == "__main__":
-    main()
+st.markdown(
+        """
+        <div style="
+            background-color: #d00000;
+            padding: 1rem;
+            border-radius: 0px;
+            width: 100%;
+            text-align: center;
+        ">
+            <h1 style="
+                color: white;
+                margin: 0;
+                font-size: 2.5rem;
+            ">
+                📂 Model Folder Search & Data Viewer
+            </h1>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
