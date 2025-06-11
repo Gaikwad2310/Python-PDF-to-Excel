@@ -1,20 +1,118 @@
-st.markdown(
-        """
-        <div style="
-            background-color: #d00000;
-            padding: 1rem;
-            border-radius: 0px;
-            width: 100%;
-            text-align: center;
-        ">
-            <h1 style="
-                color: white;
-                margin: 0;
-                font-size: 2.5rem;
-            ">
-                📂 Model Folder Search & Data Viewer
-            </h1>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy.stats import norm
+from datetime import datetime
+
+class Option:
+    def __init__(self, S: float, K: float, T: float, r: float):
+        self.S = S
+        self.K = K
+        self.T = T
+        self.r = r
+
+    def calculate_d1(self, sigma: float) -> float:
+        return (np.log(self.S / self.K) + (self.r + 0.5 * sigma**2) * self.T) / (sigma * np.sqrt(self.T))
+
+    def calculate_d2(self, sigma: float) -> float:
+        return self.calculate_d1(sigma) - sigma * np.sqrt(self.T)
+
+
+class CallOption(Option):
+    def price(self, sigma: float) -> float:
+        d1 = self.calculate_d1(sigma)
+        d2 = self.calculate_d2(sigma)
+        return self.S * norm.cdf(d1) - self.K * np.exp(-self.r * self.T) * norm.cdf(d2)
+
+    def vega(self, sigma: float) -> float:
+        d1 = self.calculate_d1(sigma)
+        return self.S * norm.pdf(d1) * np.sqrt(self.T)
+
+
+class PutOption(Option):
+    def price(self, sigma: float) -> float:
+        d1 = self.calculate_d1(sigma)
+        d2 = self.calculate_d2(sigma)
+        return self.K * np.exp(-self.r * self.T) * norm.cdf(-d2) - self.S * norm.cdf(-d1)
+
+    def vega(self, sigma: float) -> float:
+        d1 = self.calculate_d1(sigma)
+        return self.S * norm.pdf(d1) * np.sqrt(self.T)
+
+
+class ImpliedVolatilityCalculator:
+    def __init__(self, option, market_price: float, initial_vol: float = 0.2, tol: float = 1e-8, max_iterations: int = 100):
+        self.option = option
+        self.market_price = market_price
+        self.initial_vol = initial_vol
+        self.tol = tol
+        self.max_iterations = max_iterations
+
+    def calculate(self) -> float:
+        sigma = self.initial_vol
+        for _ in range(self.max_iterations):
+            price = self.option.price(sigma)
+            price_diff = self.market_price - price
+
+            if abs(price_diff) < self.tol:
+                return sigma
+
+            v = self.option.vega(sigma)
+            if v == 0:  
+                break
+
+            sigma += price_diff / v
+
+        raise RuntimeError("Implied volatility not found within maximum iterations.")
+
+
+def read_excel_data(file_path: str) -> pd.DataFrame:
+    try:
+        data = pd.read_excel(file_path)
+        data['Expiry'] = pd.to_datetime(data['Expiry'])
+        data['T'] = (data['Expiry'] - datetime.today()).dt.days / 365
+        return data
+    except Exception as e:
+        print(f"Error reading Excel file: {e}")
+        return None
+
+
+def main():
+    file_path = 'option_data.xlsx'  # Replace with your Excel file path
+    data = read_excel_data(file_path)
+
+    if data is not None:
+        implied_volatilities = []
+        strikes = []
+        times_to_maturity = []
+
+        for index, row in data.iterrows():
+            T = row['T']
+            K = row['STRIKE']
+            S = row['Cur_Price']
+            market_price = row['Call_price / Put_price']
+
+            option_type = 'call'  # Assuming all options are calls for simplicity
+            option = CallOption(S, K, T, 0.05)  # Assuming risk-free rate is 5%
+            calculator = ImpliedVolatilityCalculator(option, market_price)
+
+            try:
+                iv = calculator.calculate()
+                implied_volatilities.append(iv)
+                strikes.append(K)
+                times_to_maturity.append(T)
+            except RuntimeError as e:
+                print(f"Error calculating implied volatility for row {index}: {e}")
+
+        # Plot implied volatility surface
+        plt.figure(figsize=(10, 6))
+        plt.scatter(strikes, implied_volatilities, c=times_to_maturity, cmap='viridis')
+        plt.colorbar(label='Time to Maturity (years)')
+        plt.xlabel('Strike Price')
+        plt.ylabel('Implied Volatility')
+        plt.title('Implied Volatility Surface')
+        plt.show()
+
+
+if __name__ == "__main__":
+    main()
