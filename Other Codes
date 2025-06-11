@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.stats import norm
+from mpl_toolkits.mplot3d import Axes3D
+from scipy.interpolate import griddata
 from datetime import datetime
+from scipy.stats import norm
 
 class Option:
     def __init__(self, S: float, K: float, T: float, r: float):
@@ -82,9 +84,7 @@ def main():
     data = read_excel_data(file_path)
 
     if data is not None:
-        implied_volatilities = []
-        strikes = []
-        times_to_maturity = []
+        data['Implied_Volatility'] = np.nan
 
         for index, row in data.iterrows():
             T = row['T']
@@ -98,20 +98,31 @@ def main():
 
             try:
                 iv = calculator.calculate()
-                implied_volatilities.append(iv)
-                strikes.append(K)
-                times_to_maturity.append(T)
+                data.loc[index, 'Implied_Volatility'] = iv
             except RuntimeError as e:
                 print(f"Error calculating implied volatility for row {index}: {e}")
 
-        # Plot implied volatility surface
-        plt.figure(figsize=(10, 6))
-        plt.scatter(strikes, implied_volatilities, c=times_to_maturity, cmap='viridis')
-        plt.colorbar(label='Time to Maturity (years)')
-        plt.xlabel('Strike Price')
-        plt.ylabel('Implied Volatility')
+        # Interpolate and plot implied volatility surface
+        strikes = data['STRIKE'].values
+        times_to_maturity = data['T'].values
+        implied_volatilities = data['Implied_Volatility'].values
+
+        xi = np.linspace(strikes.min(), strikes.max(), 100)
+        yi = np.linspace(times_to_maturity.min(), times_to_maturity.max(), 100)
+        Xi, Yi = np.meshgrid(xi, yi)
+        Zi = griddata((strikes, times_to_maturity), implied_volatilities, (Xi, Yi), method='linear')
+
+        fig = plt.figure(figsize=(10, 6))
+        ax = fig.add_subplot(111, projection='3d')
+        ax.plot_surface(Xi, Yi, Zi, cmap='viridis', edgecolor='none')
+        ax.set_xlabel('Strike Price')
+        ax.set_ylabel('Time to Maturity (years)')
+        ax.set_zlabel('Implied Volatility')
         plt.title('Implied Volatility Surface')
         plt.show()
+
+        # Save DataFrame with implied volatility
+        data.to_excel('option_data_with_iv.xlsx', index=False)
 
 
 if __name__ == "__main__":
