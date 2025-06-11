@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from scipy.interpolate import griddata
+from scipy.interpolate import SmoothBivariateSpline
 from datetime import datetime
 from scipy.stats import norm
 
@@ -107,10 +107,12 @@ def main():
         times_to_maturity = data['T'].values
         implied_volatilities = data['Implied_Volatility'].values
 
+        spline = SmoothBivariateSpline(strikes, times_to_maturity, implied_volatilities)
+
         xi = np.linspace(strikes.min(), strikes.max(), 100)
         yi = np.linspace(times_to_maturity.min(), times_to_maturity.max(), 100)
         Xi, Yi = np.meshgrid(xi, yi)
-        Zi = griddata((strikes, times_to_maturity), implied_volatilities, (Xi, Yi), method='linear')
+        Zi = spline(xi, yi)
 
         fig = plt.figure(figsize=(10, 6))
         ax = fig.add_subplot(111, projection='3d')
