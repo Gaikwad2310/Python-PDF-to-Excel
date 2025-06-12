@@ -3,22 +3,30 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.interpolate import SmoothBivariateSpline
-from datetime import datetime
 from scipy.stats import norm
+from datetime import datetime
+from abc import ABC, abstractmethod
 
-class Option:
+# ---------- Option classes ----------
+
+class Option(ABC):
     def __init__(self, S: float, K: float, T: float, r: float):
-        self.S = S
-        self.K = K
-        self.T = T
-        self.r = r
+        self.S, self.K, self.T, self.r = S, K, T, r
 
     def calculate_d1(self, sigma: float) -> float:
-        return (np.log(self.S / self.K) + (self.r + 0.5 * sigma**2) * self.T) / (sigma * np.sqrt(self.T))
+        return (np.log(self.S / self.K) + (self.r + 0.5 * sigma**2) * self.T) \
+               / (sigma * np.sqrt(self.T))
 
     def calculate_d2(self, sigma: float) -> float:
         return self.calculate_d1(sigma) - sigma * np.sqrt(self.T)
 
+    @abstractmethod
+    def price(self, sigma: float) -> float:
+        pass
+
+    @abstractmethod
+    def vega(self, sigma: float) -> float:
+        pass
 
 class CallOption(Option):
     def price(self, sigma: float) -> float:
@@ -30,7 +38,6 @@ class CallOption(Option):
         d1 = self.calculate_d1(sigma)
         return self.S * norm.pdf(d1) * np.sqrt(self.T)
 
-
 class PutOption(Option):
     def price(self, sigma: float) -> float:
         d1 = self.calculate_d1(sigma)
@@ -41,9 +48,11 @@ class PutOption(Option):
         d1 = self.calculate_d1(sigma)
         return self.S * norm.pdf(d1) * np.sqrt(self.T)
 
+# ---------- Implied vol via Newton–Raphson ----------
 
 class ImpliedVolatilityCalculator:
-    def __init__(self, option, market_price: float, initial_vol: float = 0.2, tol: float = 1e-8, max_iterations: int = 100):
+    def __init__(self, option: Option, market_price: float,
+                 initial_vol: float = 0.2, tol: float = 1e-8, max_iterations: int = 100):
         self.option = option
         self.market_price = market_price
         self.initial_vol = initial_vol
@@ -54,78 +63,195 @@ class ImpliedVolatilityCalculator:
         sigma = self.initial_vol
         for _ in range(self.max_iterations):
             price = self.option.price(sigma)
-            price_diff = self.market_price - price
-
-            if abs(price_diff) < self.tol:
+            diff  = self.market_price - price
+            if abs(diff) < self.tol:
                 return sigma
-
             v = self.option.vega(sigma)
-            if v == 0:  
+            if v == 0:
                 break
+            sigma += diff / v
+        raise RuntimeError("Implied vol not found")
 
-            sigma += price_diff / v
+# ---------- SVI parameterizations (for reference) ----------
 
-        raise RuntimeError("Implied volatility not found within maximum iterations.")
+class SVIModel(ABC):
+    @abstractmethod
+    def total_variance(self, k: float) -> float:
+        pass
 
+    def implied_vol(self, K: float, T: float, S: float, r: float) -> float:
+        F = S * np.exp(r * T)
+        k = np.log(K / F)
+        w = self.total_variance(k)
+        return np.sqrt(w / T)
+
+class RawSVI(SVIModel):
+    def __init__(self, a, b, rho, m, sigma):
+        self.a, self.b, self.rho, self.m, self.sigma = a, b, rho, m, sigma
+
+    def total_variance(self, k: float) -> float:
+        return ( self.a
+               + self.b*( self.rho*(k-self.m)
+                        + np.sqrt((k-self.m)**2 + self.sigma**2) ) )
+
+class SSVI(SVIModel):
+    def __init__(self, theta, phi, rho):
+        self.theta, self.phi, self.rho = theta, phi, rho
+
+    def total_variance(self, k: float) -> float:
+        return 0.5*self.theta*(1
+               + self.rho*self.phi*k
+               + np.sqrt((self.phi*k + self.rho)**2 + (1-self.rho**2)))
+
+class JumpWingSVI(SVIModel):
+    def __init__(self, a, b, rho, m, sigma, alpha, beta):
+        self.raw   = RawSVI(a, b, rho, m, sigma)
+        self.m     = m
+        self.alpha, self.beta = alpha, beta
+
+    def total_variance(self, k: float) -> float:
+        base = self.raw.total_variance(k)
+        shift = k - self.m
+        left  = max(-shift, 0.0)
+        right = max( shift, 0.0)
+        return base + self.alpha*left + self.beta*right
+
+# ---------- Dupire Local Vol Model ----------
+
+class DupireLocalVolatilityModel:
+    def __init__(self,
+                 iv_spline: SmoothBivariateSpline,
+                 S: float,
+                 r: float,
+                 dK: float = 1.0,
+                 dT: float = 1/365.0):
+        self.iv_spline = iv_spline
+        self.S, self.r = S, r
+        self.dK, self.dT = dK, dT
+
+    def implied_vol(self, K, T) -> float:
+        # ev returns a 1D array, we pick the scalar
+        return float(self.iv_spline.ev(K, T))
+
+    def call_price(self, K, T) -> float:
+        sigma = self.implied_vol(K, T)
+        return CallOption(self.S, K, T, self.r).price(sigma)
+
+    def local_vol(self, K, T) -> float:
+        dK, dT = self.dK, self.dT
+        # price grid
+        C   = self.call_price(K, T)
+        C_p = self.call_price(K + dK, T)
+        C_m = self.call_price(K - dK, T)
+        C_Tp = self.call_price(K, T + dT)
+        C_Tm = self.call_price(K, max(T - dT, 1e-6))
+
+        dC_dK  = (C_p - C_m) / (2*dK)
+        d2C_dK2 = (C_p - 2*C + C_m) / (dK**2)
+        dC_dT  = (C_Tp - C_Tm) / (2*dT)
+
+        num = 2*dC_dT + self.r*K*dC_dK
+        den = K**2 * d2C_dK2
+        if den <= 0 or num <= 0:
+            return np.nan
+        return np.sqrt(num/den)
+
+# ---------- I/O ----------
 
 def read_excel_data(file_path: str) -> pd.DataFrame:
     try:
-        data = pd.read_excel(file_path)
-        data['Expiry'] = pd.to_datetime(data['Expiry'])
-        data['T'] = (data['Expiry'] - datetime.today()).dt.days / 365
-        return data
+        df = pd.read_excel(file_path)
+        df['Expiry'] = pd.to_datetime(df['Expiry'])
+        df['T'] = (df['Expiry'] - datetime.today()).dt.days / 365
+        return df
     except Exception as e:
-        print(f"Error reading Excel file: {e}")
+        print(f"Error reading Excel: {e}")
         return None
 
+# ---------- Main ----------
 
 def main():
-    file_path = 'option_data.xlsx'  # Replace with your Excel file path
+    file_path = 'option_data.xlsx'
     data = read_excel_data(file_path)
+    if data is None:
+        return
 
-    if data is not None:
-        data['Implied_Volatility'] = np.nan
+    # 1) Market implied vols
+    data['Implied_Vol'] = np.nan
+    r = 0.05
+    for idx, row in data.iterrows():
+        S, K, T = row['Cur_Price'], row['STRIKE'], row['T']
+        mk_price = row['Call_price / Put_price']
+        opt = CallOption(S, K, T, r)
+        calc = ImpliedVolatilityCalculator(opt, mk_price)
+        try:
+            data.at[idx, 'Implied_Vol'] = calc.calculate()
+        except RuntimeError:
+            data.at[idx, 'Implied_Vol'] = np.nan
 
-        for index, row in data.iterrows():
-            T = row['T']
-            K = row['STRIKE']
-            S = row['Cur_Price']
-            market_price = row['Call_price / Put_price']
+    # 2) Fit market IV surface
+    strikes = data['STRIKE'].values
+    times   = data['T'].values
+    ivs     = data['Implied_Vol'].values
+    iv_spline = SmoothBivariateSpline(strikes, times, ivs, kx=3, ky=3)
 
-            option_type = 'call'  # Assuming all options are calls for simplicity
-            option = CallOption(S, K, T, 0.05)  # Assuming risk-free rate is 5%
-            calculator = ImpliedVolatilityCalculator(option, market_price)
+    # 3) Dupire local vol model
+    S0 = data['Cur_Price'].iloc[0]
+    lv_model = DupireLocalVolatilityModel(iv_spline, S0, r,
+                                          dK=1.0,
+                                          dT=1/365.0)
 
-            try:
-                iv = calculator.calculate()
-                data.loc[index, 'Implied_Volatility'] = iv
-            except RuntimeError as e:
-                print(f"Error calculating implied volatility for row {index}: {e}")
+    # 4) Prepare grid for plotting
+    nK, nT = 50, 50
+    K_grid = np.linspace(strikes.min(), strikes.max(), nK)
+    T_grid = np.linspace(times.min(), times.max(), nT)
+    Ki, Ti = np.meshgrid(K_grid, T_grid)
 
-        # Interpolate and plot implied volatility surface
-        strikes = data['STRIKE'].values
-        times_to_maturity = data['T'].values
-        implied_volatilities = data['Implied_Volatility'].values
+    # Implied vol surface
+    Zi_iv = iv_spline(K_grid, T_grid)
 
-        spline = SmoothBivariateSpline(strikes, times_to_maturity, implied_volatilities)
+    # Local vol surface
+    Zi_lv = np.empty_like(Ki)
+    for i in range(nT):
+        for j in range(nK):
+            Zi_lv[i, j] = lv_model.local_vol(Ki[i, j], Ti[i, j])
 
-        xi = np.linspace(strikes.min(), strikes.max(), 100)
-        yi = np.linspace(times_to_maturity.min(), times_to_maturity.max(), 100)
-        Xi, Yi = np.meshgrid(xi, yi)
-        Zi = spline(xi, yi)
+    # 5) Plot implied vol surface
+    fig = plt.figure(figsize=(10,6))
+    ax1 = fig.add_subplot(121, projection='3d')
+    ax1.plot_surface(Ki, Ti, Zi_iv, cmap='viridis', edgecolor='none')
+    ax1.set_title('Market Implied Vol Surface')
+    ax1.set_xlabel('Strike')
+    ax1.set_ylabel('T (yrs)')
+    ax1.set_zlabel('IV')
 
-        fig = plt.figure(figsize=(10, 6))
-        ax = fig.add_subplot(111, projection='3d')
-        ax.plot_surface(Xi, Yi, Zi, cmap='viridis', edgecolor='none')
-        ax.set_xlabel('Strike Price')
-        ax.set_ylabel('Time to Maturity (years)')
-        ax.set_zlabel('Implied Volatility')
-        plt.title('Implied Volatility Surface')
-        plt.show()
+    # 6) Plot local vol surface
+    ax2 = fig.add_subplot(122, projection='3d')
+    ax2.plot_surface(Ki, Ti, Zi_lv, cmap='plasma', edgecolor='none')
+    ax2.set_title('Dupire Local Vol Surface')
+    ax2.set_xlabel('Strike')
+    ax2.set_ylabel('T (yrs)')
+    ax2.set_zlabel('Local Vol')
+    plt.tight_layout()
+    plt.show()
 
-        # Save DataFrame with implied volatility
-        data.to_excel('option_data_with_iv.xlsx', index=False)
+    # 7) For a particular maturity plot IV smile vs Local-Vol smile
+    T0 = np.median(times)    # pick median maturity
+    K_smile = np.linspace(strikes.min(), strikes.max(), 80)
+    iv_smile = iv_spline.ev(K_smile, T0*np.ones_like(K_smile))
+    lv_smile = np.array([lv_model.local_vol(Ki, T0) for Ki in K_smile])
 
+    plt.figure(figsize=(8,5))
+    plt.plot(K_smile, iv_smile, label='Implied Vol Smile')
+    plt.plot(K_smile, lv_smile, label='Local Vol Smile')
+    plt.xlabel('Strike')
+    plt.ylabel('Volatility')
+    plt.title(f'Volatility Smiles at T = {T0:.3f} yrs')
+    plt.legend()
+    plt.show()
 
-if __name__ == "__main__":
+    # 8) Save
+    data.to_excel('option_data_with_iv_and_localvol.xlsx', index=False)
+
+if __name__ == '__main__':
     main()
