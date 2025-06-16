@@ -2,6 +2,103 @@ import pandas as pd
 import sympy as sp
 import numpy as np
 
+def _create_lv_calculators_k():
+    """
+    Helper to create numerical functions from symbolic expressions,
+    where SVI is parameterized by strike k.
+    """
+    # Define symbols. k is strike, y is log-moneyness.
+    k, y, a, b, rho, m, sigma = sp.symbols('k y a b rho m sigma')
+    
+    # SVI total variance expression is a function of strike k
+    w_k_expr = a + b * (rho * (k - m) + sp.sqrt((k - m)**2 + sigma**2))
+
+    # Calculate derivatives of w w.r.t. k
+    dw_dk = sp.diff(w_k_expr, k)
+    d2w_dk2 = sp.diff(dw_dk, k)
+
+    # Use the chain rule to find derivatives w.r.t. y
+    # ∂w/∂y = (∂w/∂k) * (∂k/∂y) and ∂k/∂y = k
+    dw_dy = dw_dk * k
+    # ∂²w/∂y² = k² * (∂²w/∂k²) + k * (∂w/∂k)
+    d2w_dy2 = d2w_dk2 * k**2 + dw_dk * k
+    
+    # Denominator from the local volatility formula
+    denominator_expr = (
+        1 - y / w_k_expr * dw_dy +
+        0.5 * d2w_dy2 +
+        0.25 * (1/w_k_expr**2 - 1/w_k_expr - 0.25) * dw_dy**2
+    )
+    
+    # Compile symbolic expressions into fast numerical functions
+    w_func = sp.lambdify((k, a, b, rho, m, sigma), w_k_expr, 'numpy')
+    den_func = sp.lambdify((k, y, a, b, rho, m, sigma), denominator_expr, 'numpy')
+    
+    return w_func, den_func
+
+# Pre-compile the functions for efficiency
+_w_calculator_k, _denominator_calculator_k = _create_lv_calculators_k()
+
+def add_local_volatility_k(df: pd.DataFrame, S0: float, r: float) -> pd.DataFrame:
+    """
+    Calculates local volatility with SVI parameterized by strike k.
+
+    The input DataFrame must contain columns: 'k' (strike), 'T' (maturity),
+    and SVI parameters: 'a', 'b', 'rho', 'm', 'sigma'.
+    """
+    df_result = df.copy()
+    
+    # Extract data from DataFrame columns
+    k = df_result['k']
+    T = df_result['T']
+    y = np.log(k / (S0 * np.exp(r * T)))
+    params = [df_result[col] for col in ['a', 'b', 'rho', 'm', 'sigma']]
+
+    # Numerator: ∂w/∂T (using finite difference)
+    # This captures time-dependence of w through the forward price in k(y,T)
+    dT = 1e-4
+    k_at_T_plus_dt = k * np.exp(r * dT) # k(y, T+dT) = k(y,T) * exp(r*dT)
+    
+    w_at_T = _w_calculator_k(k, *params)
+    w_at_T_plus_dt = _w_calculator_k(k_at_T_plus_dt, *params)
+    numerator = (w_at_T_plus_dt - w_at_T) / dT
+
+    # Denominator calculation using the pre-compiled symbolic result
+    denominator = _denominator_calculator_k(k, y, *params)
+    
+    # Calculate local variance, handling numerical issues
+    local_variance = np.divide(numerator, denominator, 
+                               out=np.full_like(numerator, np.nan), 
+                               where=(denominator!=0))
+    local_variance[local_variance < 0] = 0
+
+    df_result['local_volatility'] = np.sqrt(local_variance)
+    
+    return df_result
+
+# --- Example Usage ---
+if __name__ == "__main__":
+    # Create a sample DataFrame
+    data = {
+        'T': [0.5, 0.5, 0.5, 1.0, 1.0, 1.0],
+        'k': [90, 100, 110, 90, 100, 110],
+        'a': [0.035, 0.035, 0.035, 0.025, 0.025, 0.025],
+        'b': [0.004, 0.004, 0.004, 0.005, 0.005, 0.005], # Scaled for k
+        'rho': [-0.6, -0.6, -0.6, -0.5, -0.5, -0.5],
+        'm': [100, 100, 100, 102, 102, 102], # m is now in strike units
+        'sigma': [15, 15, 15, 18, 18, 18] # sigma is now in strike units
+    }
+    sample_df = pd.DataFrame(data)
+
+    # Call the function with market data
+    result_df_k = add_local_volatility_k(df=sample_df, S0=100.0, r=0.01)
+
+    print(result_df_k)
+
+import pandas as pd
+import sympy as sp
+import numpy as np
+
 def create_local_vol_function():
     y, T, a, b, rho, m, sigma = sp.symbols('y T a b rho m sigma')
     w_expr = a + b * (rho * (y - m) + sp.sqrt((y - m)**2 + sigma**2))
