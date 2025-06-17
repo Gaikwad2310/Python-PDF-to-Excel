@@ -1,3 +1,83 @@
+
+
+You are tasked with generating an updated version of a technical report using:
+
+- A reference PDF containing last quarter's report.
+- A table with the current quarter’s KPI results.
+  
+Follow these detailed instructions for each section:
+
+---
+
+**1. Introduction**
+
+**1.1 Executive Summary**  
+Generate a concise summary of the entire updated report, highlighting major performance findings, KPI changes, and conclusions. Use the current KPI results and analysis in later sections to write this paragraph professionally and clearly.
+
+**1.2 Model Stakeholders**  
+Copy this section **exactly as it is** from the uploaded PDF. No edits are to be made.
+
+**1.3 Test Source**  
+Replicate this section from the original document, with the exception of this minor change:  
+[INSERT THE SPECIFIC CHANGE HERE].  
+Keep the format, terminology, and tone exactly as in the original.
+
+---
+
+**2. Monitoring Plan**  
+Copy the Monitoring Plan section **exactly as it appears** in the uploaded PDF, without any modification.
+
+---
+
+**3. Model Testing and Performance**
+
+**3.1 Key Performance Indicator Results**  
+Use the provided table of current quarter KPI results. Present them in a formatted table. Below the table, write a short analytical summary of each KPI, what the values indicate about model performance, and any significant improvements or degradations.
+
+**3.2 Overall Rating, Weighting Methodology, and Rationale**  
+Use the structure and flow of this section from the uploaded PDF. Update the rating and rationale using the current KPI results. Explain any changes to the weighting or reasoning clearly, preserving the tone and section structure from the original.
+
+**3.3 KPI History**  
+Generate a table comparing KPI values from the current quarter and the **three previous quarters**.  
+- Take the previous 3 quarters from the uploaded PDF.
+- Add the current quarter from the newly provided data.
+- Present the data in the same table format used in the original report.  
+Follow this with a brief trend analysis — what has remained stable, what has improved or declined.
+
+---
+
+**4. Attestations**
+
+**4.1 Regression Testing**  
+Copy this section directly from the uploaded PDF. Only update the date or test cycle reference as needed. Do not modify technical content.
+
+**4.2 Monitoring Plan is Up-to-Date**  
+Same as above — copy the section from the original report, updating the date or time period references only.
+
+---
+
+**5. Conclusion**  
+Write a new conclusion based on the full contents of the updated document. Include a summary of:
+- Overall model performance and KPI observations,
+- Any major changes since last quarter,
+- Final evaluation of the model,
+- Recommendations going forward.
+
+Keep the tone formal, analytical, and in line with the original report’s tone.
+
+---
+
+**References**  
+Copy this section **exactly as it is** from the uploaded PDF. No changes are required.
+
+---
+
+**General Instructions:**  
+- Maintain the same section and subsection numbering as the original.
+- Follow the original report’s formatting and tone strictly.
+- Only make edits where explicitly instructed.
+- Use only the data provided — do not assume or fabricate values.
+
 import pandas as pd
 import sympy as sp
 import numpy as np
