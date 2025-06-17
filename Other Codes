@@ -5,84 +5,95 @@ You are an expert in professional technical document generation. Your task is to
 3. Detailed user instructions.
 
 Replicate the structure, formatting, and section numbering exactly as in the original document. Do not invent data. Use unchanged content directly from the original PDF where indicated, and update only the specific parts mentioned. Your writing must be formal, consistent, and clearly organized.
+You are generating an updated version of a model performance report using:
+- A PDF report from a previous quarter (already uploaded)
+- A current quarter KPI table (provided separately)
 
-You are tasked with generating an updated version of a technical report using:
-
-- A reference PDF containing last quarter's report.
-- A table with the current quarter’s KPI results.
-  
-Follow these detailed instructions for each section:
+The document must follow the original section structure precisely and contain fully updated or copied content where needed.
 
 ---
 
 **1. Introduction**
 
 **1.1 Executive Summary**  
-Generate a concise summary of the entire updated report, highlighting major performance findings, KPI changes, and conclusions. Use the current KPI results and analysis in later sections to write this paragraph professionally and clearly.
+Write a concise but complete executive summary based on the updated content of the entire document. Include highlights from the KPI results, key trends, and overall model performance. The summary must preview all the key findings covered in Chapters 3 to 5.
 
 **1.2 Model Stakeholders**  
-Copy this section **exactly as it is** from the uploaded PDF. No edits are to be made.
+Copy this section **exactly** as it appears in the uploaded PDF. No changes are required.
 
 **1.3 Test Source**  
-Replicate this section from the original document, with the exception of this minor change:  
-[INSERT THE SPECIFIC CHANGE HERE].  
-Keep the format, terminology, and tone exactly as in the original.
+Copy this section from the uploaded PDF, but apply this specific change:  
+[INSERT SMALL CHANGE HERE].  
+Keep everything else intact, preserving original formatting and tone.
 
 ---
 
 **2. Monitoring Plan**  
-Copy the Monitoring Plan section **exactly as it appears** in the uploaded PDF, without any modification.
+Copy the entire “Monitoring Plan” section exactly as in the uploaded PDF. Do not alter anything.
 
 ---
 
-**3. Model Testing and Performance**
+**3. Model Testing and Performance**  
+💡 This chapter must be **fully written** with **tables and analysis**, not skipped or summarized.
 
 **3.1 Key Performance Indicator Results**  
-Use the provided table of current quarter KPI results. Present them in a formatted table. Below the table, write a short analytical summary of each KPI, what the values indicate about model performance, and any significant improvements or degradations.
+Use the provided current quarter KPI table. Reproduce this as a clearly formatted table.  
+Then, write a paragraph analyzing each KPI:  
+- Explain what each metric indicates  
+- Mention any improvement or decline compared to previous quarter  
+- Use a clear, structured format (e.g., bullets or subheadings)
 
 **3.2 Overall Rating, Weighting Methodology, and Rationale**  
-Use the structure and flow of this section from the uploaded PDF. Update the rating and rationale using the current KPI results. Explain any changes to the weighting or reasoning clearly, preserving the tone and section structure from the original.
+Recalculate the overall model rating based on the current KPIs.  
+Use the same structure as in the PDF:  
+- Include updated scores  
+- Describe the weighting methodology  
+- Provide rationale for the new overall score  
+💡 This section must be fully written with all subsections covered — no placeholders or skips.
 
 **3.3 KPI History**  
-Generate a table comparing KPI values from the current quarter and the **three previous quarters**.  
-- Take the previous 3 quarters from the uploaded PDF.
-- Add the current quarter from the newly provided data.
-- Present the data in the same table format used in the original report.  
-Follow this with a brief trend analysis — what has remained stable, what has improved or declined.
+Create a 4-quarter KPI comparison table.  
+- Use current KPI data (provided)  
+- Extract the previous 3 quarters' values from the uploaded PDF  
+Then, write a comparative analysis below the table:  
+- Highlight trends  
+- Explain consistent or diverging behaviors  
+- Be specific and technical, not vague
 
 ---
 
-**4. Attestations**
+**4. Attestations**  
+💡 This chapter must be complete. Both subsections should be **copied and lightly updated**.
 
 **4.1 Regression Testing**  
-Copy this section directly from the uploaded PDF. Only update the date or test cycle reference as needed. Do not modify technical content.
+Copy from the PDF and update the date or version reference to match the current testing cycle. Do not skip this section.
 
 **4.2 Monitoring Plan is Up-to-Date**  
-Same as above — copy the section from the original report, updating the date or time period references only.
+Copy this section and update only the date. Do not shorten or summarize.
 
 ---
 
 **5. Conclusion**  
-Write a new conclusion based on the full contents of the updated document. Include a summary of:
-- Overall model performance and KPI observations,
-- Any major changes since last quarter,
-- Final evaluation of the model,
-- Recommendations going forward.
+Write a new conclusion summarizing:  
+- Overall model health  
+- Key changes in this quarter’s results  
+- Any issues or regressions  
+- Final recommendation
 
-Keep the tone formal, analytical, and in line with the original report’s tone.
+💡 This section must reflect insights from the KPI analysis and rating sections. Be formal and analytical.
 
 ---
 
 **References**  
-Copy this section **exactly as it is** from the uploaded PDF. No changes are required.
+Copy the “References” section **exactly** as it appears in the PDF. No changes are allowed.
 
 ---
 
-**General Instructions:**  
-- Maintain the same section and subsection numbering as the original.
-- Follow the original report’s formatting and tone strictly.
-- Only make edits where explicitly instructed.
-- Use only the data provided — do not assume or fabricate values.
+**Final Instructions**  
+- Output must include **all sections and subsections in full**  
+- Use complete paragraphs, tables, and technical tone  
+- Do not leave any section empty or placeholder text  
+- Use headings, numbering, and formatting exactly as in the original document
 
 import pandas as pd
 import sympy as sp
