@@ -1,3 +1,58 @@
+import numpy as np
+import pandas as pd
+from scipy.interpolate import interp2d
+import matplotlib.pyplot as plt
+
+# Local vol surface as a 2D array over strikes (K) and maturities (T)
+def local_vol_surface(strikes, maturities, local_vol_values):
+    return interp2d(strikes, maturities, local_vol_values, kind='linear')
+
+# Dupire PDE: finite difference for call option pricing
+def price_option_dupire(S0, K, T, r, local_vol_func, S_grid_size=200, T_steps=100):
+    S_max = 2 * S0
+    dS = S_max / S_grid_size
+    dt = T / T_steps
+
+    S = np.linspace(0.001, S_max, S_grid_size)
+    V = np.maximum(S - K, 0)  # Final payoff
+
+    for j in range(T_steps):
+        t = T - j * dt
+        sigma = local_vol_func(K, t)
+
+        # Finite difference coefficients
+        A = np.zeros(S_grid_size)
+        B = np.zeros(S_grid_size)
+        C = np.zeros(S_grid_size)
+
+        for i in range(1, S_grid_size - 1):
+            delta = (V[i+1] - V[i-1]) / (2 * dS)
+            gamma = (V[i+1] - 2*V[i] + V[i-1]) / (dS**2)
+
+            vol_sq = sigma**2
+            A[i] = 0.5 * vol_sq * S[i]**2 * gamma
+            B[i] = r * S[i] * delta
+            C[i] = -r * V[i]
+
+        V[1:-1] += dt * (A[1:-1] + B[1:-1] + C[1:-1])
+        V[0] = 0
+        V[-1] = S_max - K * np.exp(-r * (T - t))
+
+    return np.interp(S0, S, V)
+
+# Evaluation function
+def evaluate_local_volatility(S0, r, strikes, maturities, local_vol_values, market_prices):
+    lv_func = local_vol_surface(strikes, maturities, local_vol_values)
+
+    results = []
+    for K, T, C_market in zip(strikes, maturities, market_prices):
+        C_model = price_option_dupire(S0, K, T, r, lv_func)
+        error = abs(C_market - C_model)
+        results.append((K, T, C_market, C_model, error))
+
+    df_results = pd.DataFrame(results, columns=["Strike", "Maturity", "Market_Price", "Model_Price", "Abs_Error"])
+    return df_results
+
 import math
 from scipy.stats import norm
 from scipy.optimize import brentq
