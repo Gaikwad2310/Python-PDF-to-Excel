@@ -1,3 +1,74 @@
+import math
+from scipy.stats import norm
+from scipy.optimize import brentq
+
+class BlackScholesModel:
+    def __init__(self, S, K, T, r):
+        """
+        S: Spot price
+        K: Strike price
+        T: Time to maturity (in years)
+        r: Risk-free interest rate
+        """
+        self.S = S
+        self.K = K
+        self.T = T
+        self.r = r
+
+    def call_price(self, sigma):
+        """Black-Scholes formula for a European call option."""
+        d1 = (math.log(self.S / self.K) + (self.r + 0.5 * sigma ** 2) * self.T) / (sigma * math.sqrt(self.T))
+        d2 = d1 - sigma * math.sqrt(self.T)
+        return self.S * norm.cdf(d1) - self.K * math.exp(-self.r * self.T) * norm.cdf(d2)
+
+    def put_price(self, sigma):
+        """Black-Scholes formula for a European put option."""
+        d1 = (math.log(self.S / self.K) + (self.r + 0.5 * sigma ** 2) * self.T) / (sigma * math.sqrt(self.T))
+        d2 = d1 - sigma * math.sqrt(self.T)
+        return self.K * math.exp(-self.r * self.T) * norm.cdf(-d2) - self.S * norm.cdf(-d1)
+
+class ImpliedVolatilityCalculator:
+    def __init__(self, bs_model, option_type='call'):
+        """
+        bs_model: Instance of BlackScholesModel
+        option_type: 'call' or 'put'
+        """
+        self.bs_model = bs_model
+        self.option_type = option_type
+
+    def implied_volatility(self, market_price, sigma_lower=1e-6, sigma_upper=5.0, tol=1e-6):
+        """
+        Calculate implied volatility using Brent's method.
+        market_price: Observed market price of the option
+        """
+        if self.option_type == 'call':
+            price_fn = self.bs_model.call_price
+        elif self.option_type == 'put':
+            price_fn = self.bs_model.put_price
+        else:
+            raise ValueError("option_type must be 'call' or 'put'")
+
+        def objective(sigma):
+            return price_fn(sigma) - market_price
+
+        try:
+            return brentq(objective, sigma_lower, sigma_upper, xtol=tol)
+        except ValueError:
+            return float('nan')  # No solution found
+
+# Example usage
+if __name__ == "__main__":
+    S = 100       # Spot price
+    K = 100       # Strike price
+    T = 1.0       # Time to maturity
+    r = 0.05      # Risk-free interest rate
+    C_market = 10 # Market price of call option
+
+    bs = BlackScholesModel(S, K, T, r)
+    iv_calc = ImpliedVolatilityCalculator(bs, option_type='call')
+    iv = iv_calc.implied_volatility(C_market)
+    print(f"Implied Volatility (Call): {iv:.6f}")
+
 You are an expert in professional technical document generation. Your task is to update a performance and monitoring report using:
 
 1. A reference PDF document that contains the previous quarter’s version of the report.
