@@ -1,3 +1,73 @@
+import os
+
+def extract_folder_structure(master_path):
+    folder_structure = {}
+
+    for level1 in os.listdir(master_path):
+        path1 = os.path.join(master_path, level1)
+        if os.path.isdir(path1):
+            folder_structure[level1] = {}
+            
+            for level2 in os.listdir(path1):
+                path2 = os.path.join(path1, level2)
+                if os.path.isdir(path2):
+                    folder_structure[level1][level2] = []
+                    
+                    for level3 in os.listdir(path2):
+                        path3 = os.path.join(path2, level3)
+                        if os.path.isdir(path3):
+                            folder_structure[level1][level2].append(level3)
+
+    return folder_structure
+
+# Example usage
+master_folder_path = "/path/to/master/folder"
+structure = extract_folder_structure(master_folder_path)
+
+# Print the structure clearly
+import pprint
+pprint.pprint(structure)
+
+import os
+import shutil
+
+def create_folders_and_copy_pdf(base_path, folder_dict, pdf_path):
+    for level1 in folder_dict:
+        path1 = os.path.join(base_path, level1)
+        os.makedirs(path1, exist_ok=True)
+
+        for level2 in folder_dict[level1]:
+            path2 = os.path.join(path1, level2)
+            os.makedirs(path2, exist_ok=True)
+
+            for level3 in folder_dict[level1][level2]:
+                path3 = os.path.join(path2, level3)
+                os.makedirs(path3, exist_ok=True)
+
+                # Copy PDF into level3 folder
+                pdf_filename = os.path.basename(pdf_path)
+                dest_pdf_path = os.path.join(path3, pdf_filename)
+                shutil.copy2(pdf_path, dest_pdf_path)
+
+    print("Folder structure created and PDF copied.")
+
+# === Example usage ===
+# Folder dictionary (you can reuse output from the previous function)
+folder_structure = {
+    'A': {
+        'A1': ['A1a', 'A1b'],
+        'A2': ['A2a']
+    },
+    'B': {
+        'B1': ['B1a']
+    }
+}
+
+base_output_path = "/path/to/create/folders"    # Replace this with the base output path
+pdf_source_path = "/path/to/your/file.pdf"      # Replace this with the actual PDF path
+
+create_folders_and_copy_pdf(base_output_path, folder_structure, pdf_source_path)
+
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp2d
