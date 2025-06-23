@@ -1,3 +1,45 @@
+import camelot
+import pandas as pd
+
+# Extract tables
+tables = camelot.read_pdf("file.pdf", pages="1", flavor="stream")
+
+# Get the first table
+df = tables[0].df
+
+# Clean newlines
+df = df.applymap(lambda x: x.replace('\n', ' ').strip() if isinstance(x, str) else x)
+
+# Optionally set first row as header
+df.columns = df.iloc[0]
+df = df[1:].reset_index(drop=True)
+
+# Handle merged rows (assumes first column should not be empty)
+merged_rows = []
+prev_row = None
+
+for _, row in df.iterrows():
+    if row.iloc[0].strip() == '':  # Assume first column (e.g., ID) is the key
+        # Merge into previous row
+        if prev_row is not None:
+            prev_row = [
+                (prev if val.strip() == '' else prev + ' ' + val)
+                for prev, val in zip(prev_row, row)
+            ]
+    else:
+        if prev_row is not None:
+            merged_rows.append(prev_row)
+        prev_row = list(row)
+
+# Append the last processed row
+if prev_row is not None:
+    merged_rows.append(prev_row)
+
+# Convert to DataFrame
+cleaned_df = pd.DataFrame(merged_rows, columns=df.columns)
+
+print(cleaned_df)
+
 import os
 import shutil
 
