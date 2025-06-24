@@ -1,3 +1,27 @@
+# Assuming the first column is key and should never be blank
+merged_rows = []
+prev_row = None
+
+for _, row in df.iterrows():
+    if pd.isna(row.iloc[0]) or str(row.iloc[0]).strip() == '':
+        if prev_row is not None:
+            prev_row = [
+                (prev if pd.isna(val) or str(val).strip() == '' else str(prev) + ' ' + str(val))
+                for prev, val in zip(prev_row, row)
+            ]
+    else:
+        if prev_row is not None:
+            merged_rows.append(prev_row)
+        prev_row = list(row)
+
+if prev_row is not None:
+    merged_rows.append(prev_row)
+
+# Convert to DataFrame
+cleaned_df = pd.DataFrame(merged_rows, columns=df.columns)
+
+print(cleaned_df)
+
 import re
 import pdfplumber
 import camelot
