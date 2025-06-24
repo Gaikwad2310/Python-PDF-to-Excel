@@ -1,3 +1,44 @@
+import tabula
+import pandas as pd
+
+# Step 1: Read the table from PDF image (assuming you have it as a PDF)
+# If you're starting from image (like your photo), convert to PDF first
+# tables = tabula.read_pdf("converted.pdf", pages='all', multiple_tables=False, lattice=True)
+tables = tabula.read_pdf("kpi_table.pdf", pages='all', multiple_tables=False)
+
+# Step 2: Take the first table
+df = tables[0]
+
+# Step 3: Clean newlines
+df = df.applymap(lambda x: x.replace('\n', ' ').strip() if isinstance(x, str) else x)
+
+# Step 4: Merge rows where first column is blank (KPI #)
+merged_rows = []
+prev_row = None
+
+for _, row in df.iterrows():
+    if pd.isna(row[0]) or str(row[0]).strip() == '':
+        if prev_row is not None:
+            prev_row = [
+                (prev if pd.isna(curr) or str(curr).strip() == '' else f"{str(prev)} {str(curr)}")
+                for prev, curr in zip(prev_row, row)
+            ]
+    else:
+        if prev_row is not None:
+            merged_rows.append(prev_row)
+        prev_row = list(row)
+
+if prev_row is not None:
+    merged_rows.append(prev_row)
+
+# Step 5: Create cleaned DataFrame
+clean_df = pd.DataFrame(merged_rows, columns=df.columns)
+
+# Step 6: Save or display
+clean_df.to_excel("cleaned_kpi_table.xlsx", index=False)
+print(clean_df)
+
+
 # Assuming the first column is key and should never be blank
 merged_rows = []
 prev_row = None
