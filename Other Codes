@@ -1,3 +1,32 @@
+import pandas as pd
+
+# Assuming your table is already read into 'df' (via Camelot or Tabula)
+# df = tables[0].df
+
+# Step 1: Clean newline characters and whitespace
+df = df.applymap(lambda x: str(x).replace('\n', ' ').strip() if pd.notna(x) else x)
+
+# Step 2: Get the last column
+last_col = df.columns[-1]
+
+# Step 3: Normalize column values to lowercase for case-insensitive search
+last_col_values = df[last_col].str.lower().fillna('')
+
+# Step 4: Count occurrences
+green_count = last_col_values.str.count(r'\bgreen\b').sum()
+yellow_count = last_col_values.str.count(r'\byellow\b').sum()
+red_count = last_col_values.str.count(r'\bred\b').sum()
+
+# Step 5: Create new DataFrame with the counts
+count_df = pd.DataFrame({
+    "Color": ["Green", "Yellow", "Red"],
+    "Count": [int(green_count), int(yellow_count), int(red_count)]
+})
+
+# Step 6: Display or save
+print(count_df)
+# count_df.to_excel("color_counts.xlsx", index=False)
+
 import tabula
 import pandas as pd
 
