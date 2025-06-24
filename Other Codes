@@ -1,3 +1,55 @@
+import re
+import pdfplumber
+import camelot
+
+def find_toc_page(pdf_path, max_pages=5):
+    with pdfplumber.open(pdf_path) as pdf:
+        for i in range(min(max_pages, len(pdf.pages))):
+            text = pdf.pages[i].extract_text()
+            if text and ("contents" in text.lower() or "chapter" in text.lower()):
+                return i + 1  # return 1-based page index
+    return None
+
+def extract_page_number_from_toc(pdf_path, subchapter_title, max_pages=5):
+    toc_page = find_toc_page(pdf_path, max_pages)
+    if toc_page is None:
+        print("Table of Contents not found.")
+        return None
+
+    with pdfplumber.open(pdf_path) as pdf:
+        text = pdf.pages[toc_page - 1].extract_text()
+        lines = text.split('\n')
+
+        for line in lines:
+            if subchapter_title.lower() in line.lower():
+                match = re.search(r'(\d+)\s*$', line.strip())  # extract ending number
+                if match:
+                    return int(match.group(1))
+    print(f"Subchapter '{subchapter_title}' not found in ToC.")
+    return None
+
+def extract_tables_from_subchapter(pdf_path, subchapter_title, offset_pages=2):
+    page_num = extract_page_number_from_toc(pdf_path, subchapter_title)
+    if not page_num:
+        return []
+
+    pages = list(range(page_num, page_num + offset_pages + 1))  # include following pages
+    page_str = ",".join(map(str, pages))
+    tables = camelot.read_pdf(pdf_path, pages=page_str, strip_text='\n')
+    return [table.df for table in tables]
+
+# Example usage
+pdf_path = "your_file.pdf"
+subchapter = "2.1 Revenue Analysis"
+
+tables = extract_tables_from_subchapter(pdf_path, subchapter)
+
+if tables:
+    print(f"Extracted {len(tables)} tables.")
+    print(tables[0])  # Show first table
+else:
+    print("No tables found.")
+
 import camelot
 import pandas as pd
 
