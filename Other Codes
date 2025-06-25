@@ -1,3 +1,50 @@
+import re
+import fitz  # PyMuPDF
+
+def extract_text_from_pdf(pdf_path):
+    doc = fitz.open(pdf_path)
+    text = ""
+    for page in doc:
+        text += page.get_text()
+    return text
+
+def extract_id_text(full_text, chapter_title, subchapter_title, target_id):
+    # Match the chapter section
+    chapter_pattern = rf"{chapter_title}.*?(?=Chapter \d+:|$)"
+    chapter_match = re.search(chapter_pattern, full_text, re.DOTALL | re.IGNORECASE)
+    if not chapter_match:
+        return f"Chapter '{chapter_title}' not found."
+
+    chapter_text = chapter_match.group(0)
+
+    # Match the subchapter section
+    subchapter_pattern = rf"{subchapter_title}.*?(?=\n\d+\.\d+|Chapter \d+:|$)"
+    subchapter_match = re.search(subchapter_pattern, chapter_text, re.DOTALL | re.IGNORECASE)
+    if not subchapter_match:
+        return f"Subchapter '{subchapter_title}' not found."
+
+    subchapter_text = subchapter_match.group(0)
+
+    # Match the ID section
+    id_pattern = rf"{target_id}.*?(?=\nID\d+|$)"
+    id_match = re.search(id_pattern, subchapter_text, re.DOTALL | re.IGNORECASE)
+    if not id_match:
+        return f"ID '{target_id}' not found in Subchapter '{subchapter_title}'."
+
+    return id_match.group(0).strip()
+
+# Example usage:
+pdf_path = "sample.pdf"
+chapter = "Chapter 2: System Design"
+subchapter = "2.1 Architecture Overview"
+target_id = "ID102"
+
+full_text = extract_text_from_pdf(pdf_path)
+result = extract_id_text(full_text, chapter, subchapter, target_id)
+
+print(result)
+
+
 import pandas as pd
 
 # Clean \n and whitespace
