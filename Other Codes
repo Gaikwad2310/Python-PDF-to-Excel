@@ -9,7 +9,7 @@ def extract_text_from_pdf(pdf_path):
     return text
 
 def extract_id_text(full_text, chapter_title, subchapter_title, target_id):
-    # Extract chapter block
+    # Extract chapter text
     chapter_pattern = rf"{re.escape(chapter_title)}.*?(?=Chapter \d+:|$)"
     chapter_match = re.search(chapter_pattern, full_text, re.DOTALL | re.IGNORECASE)
     if not chapter_match:
@@ -17,7 +17,7 @@ def extract_id_text(full_text, chapter_title, subchapter_title, target_id):
 
     chapter_text = chapter_match.group(0)
 
-    # Extract subchapter block
+    # Extract subchapter text
     subchapter_pattern = rf"{re.escape(subchapter_title)}.*?(?=\n\d+\.\d+|Chapter \d+:|$)"
     subchapter_match = re.search(subchapter_pattern, chapter_text, re.DOTALL | re.IGNORECASE)
     if not subchapter_match:
@@ -25,22 +25,13 @@ def extract_id_text(full_text, chapter_title, subchapter_title, target_id):
 
     subchapter_text = subchapter_match.group(0)
 
-    # Find all IDs and their positions
-    id_blocks = list(re.finditer(r"(ID\d+):", subchapter_text))
-    if not id_blocks:
-        return f"No IDs found in Subchapter '{subchapter_title}'."
+    # Use non-greedy match between target ID and next ID
+    id_pattern = rf"({re.escape(target_id)}.*?)\n(?:ID\d+:|\Z)"
+    id_match = re.search(id_pattern, subchapter_text, re.DOTALL | re.IGNORECASE)
+    if not id_match:
+        return f"ID '{target_id}' not found or couldn't extract properly."
 
-    id_dict = {}
-    for i in range(len(id_blocks)):
-        current_id = id_blocks[i].group(1)
-        start = id_blocks[i].start()
-        end = id_blocks[i+1].start() if i + 1 < len(id_blocks) else len(subchapter_text)
-        id_dict[current_id] = subchapter_text[start:end].strip()
-
-    if target_id not in id_dict:
-        return f"ID '{target_id}' not found in Subchapter '{subchapter_title}'."
-
-    return id_dict[target_id]
+    return id_match.group(1).strip()
 
 # Example usage:
 pdf_path = "sample.pdf"
@@ -52,7 +43,6 @@ full_text = extract_text_from_pdf(pdf_path)
 result = extract_id_text(full_text, chapter, subchapter, target_id)
 
 print(result)
-
 
 
 import pandas as pd
