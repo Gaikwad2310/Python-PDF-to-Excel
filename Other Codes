@@ -1,3 +1,30 @@
+from scipy.stats import norm
+
+# Black-Scholes Call price
+def bs_call_price(S, K, T, r, sigma):
+    if T <= 0 or sigma <= 0:
+        return max(S - K, 0)
+    d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    return S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+
+# Check calendar arbitrage using SVI implied vols and Black-Scholes price
+def check_calendar_arbitrage(df, r=0.0):
+    results = []
+    for K in sorted(df['K'].unique()):
+        subset = df[df['K'] == K].copy().sort_values('T')
+        prices = []
+        for _, row in subset.iterrows():
+            S = row['S']
+            sigma = row['IV_svi']
+            T = row['T']
+            price = bs_call_price(S, K, T, r, sigma)
+            prices.append(price)
+        prices = np.array(prices)
+        arbitrage = np.any(np.diff(prices) < -1e-6)
+        results.append((K, arbitrage))
+    return results
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
