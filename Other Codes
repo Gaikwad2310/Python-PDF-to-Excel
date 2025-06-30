@@ -1,3 +1,75 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# SVI total variance function
+def svi_total_variance(k, a, b, rho, m, sigma):
+    return a + b * (rho * (k - m) + np.sqrt((k - m)**2 + sigma**2))
+
+# Check butterfly arbitrage: convexity of total variance w.r.t log-moneyness
+def check_butterfly_arbitrage(df, spot):
+    results = []
+    for T in sorted(df['T'].unique()):
+        subset = df[df['T'] == T].copy()
+        subset['k'] = np.log(subset['K'] / spot)
+        
+        # Calculate total variance using SVI parameters
+        row = subset.iloc[0]  # Same params for all strikes at same T
+        a, b, rho, m, sigma = row['a'], row['b'], row['rho'], row['m'], row['sigma']
+        subset['w'] = svi_total_variance(subset['k'], a, b, rho, m, sigma)
+        
+        # Numerical second derivative of w(k)
+        subset = subset.sort_values('k')
+        w = subset['w'].values
+        k = subset['k'].values
+        d2w = np.gradient(np.gradient(w, k), k)
+        subset['d2w'] = d2w
+        
+        if np.any(d2w < 0):
+            results.append((T, True))  # arbitrage exists
+        else:
+            results.append((T, False))
+    return results
+
+# Check calendar arbitrage: total variance should increase with T for fixed K
+def check_calendar_arbitrage(df, spot):
+    results = []
+    strikes = sorted(df['K'].unique())
+    
+    for K in strikes:
+        subset = df[df['K'] == K].copy()
+        subset = subset.sort_values('T')
+        k = np.log(K / spot)
+
+        w = []
+        for _, row in subset.iterrows():
+            a, b, rho, m, sigma = row['a'], row['b'], row['rho'], row['m'], row['sigma']
+            w.append(svi_total_variance(k, a, b, rho, m, sigma))
+        
+        if any(np.diff(w) < 0):
+            results.append((K, True))  # arbitrage exists
+        else:
+            results.append((K, False))
+    return results
+
+# Assuming df is your DataFrame and spot is the spot price
+spot = df['S'].iloc[0]  # If constant
+
+butterfly_arb = check_butterfly_arbitrage(df, spot)
+calendar_arb = check_calendar_arbitrage(df, spot)
+
+print("Butterfly Arbitrage Found at:")
+for T, is_arbitrage in butterfly_arb:
+    if is_arbitrage:
+        print(f"  T = {T}")
+
+print("\nCalendar Arbitrage Found at:")
+for K, is_arbitrage in calendar_arb:
+    if is_arbitrage:
+        print(f"  K = {K}")
+
+
+
 import re
 import fitz  # PyMuPDF
 
