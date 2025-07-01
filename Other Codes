@@ -1,3 +1,185 @@
+import numpy as np
+import pandas as pd
+from scipy.stats import norm
+from scipy.optimize import minimize
+from scipy.interpolate import UnivariateSpline, LinearNDInterpolator
+from scipy.linalg import solve_banded
+
+# ---- 1. Black-Scholes and Vega ----
+def black_scholes_call_price(S, K, T, r, sigma):
+    d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T) + 1e-10)
+    d2 = d1 - sigma * np.sqrt(T)
+    return S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+
+def vega(S, K, T, r, sigma):
+    d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T) + 1e-10)
+    return S * norm.pdf(d1) * np.sqrt(T)
+
+def newton_raphson_iv(market_price, S, K, T, r, tol=1e-6, max_iter=100):
+    sigma = 0.2
+    for _ in range(max_iter):
+        price = black_scholes_call_price(S, K, T, r, sigma)
+        v = vega(S, K, T, r, sigma)
+        if v == 0:
+            break
+        diff = price - market_price
+        sigma -= diff / v
+        if abs(diff) < tol:
+            return sigma
+    return np.nan
+
+# ---- 2. SVI Fits ----
+def svi_raw(k, a, b, rho, m, sigma):
+    return a + b * (rho * (k - m) + np.sqrt((k - m)**2 + sigma**2))
+
+def svi_natural(k, a, b, rho, m, sigma):
+    return a + b * np.tanh(rho * (k - m)) + sigma * np.abs(k - m)
+
+def svi_jumpwings(k, a, b, rho, m, sigma):
+    return svi_raw(k, a, b, rho, m, sigma)
+
+def fit_svi(df, k, w):
+    def obj(fn, params): return np.mean((w - fn(k, *params))**2)
+    bounds = [(-1, 1), (1e-5, 10), (-0.999, 0.999), (-2, 2), (1e-5, 2)]
+    initial = [0.1, 0.1, 0.0, 0.0, 0.1]
+
+    res_raw = minimize(lambda p: obj(svi_raw, p), initial, bounds=bounds)
+    res_nat = minimize(lambda p: obj(svi_natural, p), initial, bounds=bounds)
+    res_jump = minimize(lambda p: obj(svi_jumpwings, p), initial, bounds=bounds)
+
+    df["SVI_raw_fit"] = svi_raw(k, *res_raw.x)
+    df["SVI_natural_fit"] = svi_natural(k, *res_nat.x)
+    df["SVI_jumpwings_fit"] = svi_jumpwings(k, *res_jump.x)
+
+    return df, {
+        "raw": (res_raw.x, obj(svi_raw, res_raw.x)),
+        "natural": (res_nat.x, obj(svi_natural, res_nat.x)),
+        "jumpwings": (res_jump.x, obj(svi_jumpwings, res_jump.x)),
+    }
+
+# ---- 3. Arbitrage Checks ----
+def butterfly_arbitrage_check(k, w_k):
+    w_prime = np.gradient(w_k, k)
+    w_double_prime = np.gradient(w_prime, k)
+    g_k = ((1 - (k * w_prime) / (2 * w_k))**2
+           - 0.25 * w_prime**2 * (1 / w_k + 0.25)
+           + 0.5 * w_double_prime)
+    return np.all(g_k >= -1e-5)
+
+def calendar_arbitrage_check(df):
+    grouped = df.groupby("T")
+    maturities = sorted(grouped.groups.keys())
+    for i in range(len(maturities) - 1):
+        df1 = grouped.get_group(maturities[i])
+        df2 = grouped.get_group(maturities[i+1])
+        k_common = np.intersect1d(df1["log_moneyness"], df2["log_moneyness"])
+        if len(k_common) == 0:
+            continue
+        w1 = np.interp(k_common, df1["log_moneyness"], df1["total_variance"])
+        w2 = np.interp(k_common, df2["log_moneyness"], df2["total_variance"])
+        if np.any(w2 < w1 - 1e-5):
+            return False
+    return True
+
+# ---- 4. Dupire Local Vol ----
+def compute_local_volatility(df, svi_column="SVI_raw_fit"):
+    local_vol_list = []
+    grouped = df.groupby("T")
+    for T, df_T in grouped:
+        df_T = df_T.sort_values("log_moneyness")
+        k = df_T["log_moneyness"].values
+        w = df_T[svi_column].values
+        if len(k) < 5:
+            df_T["LocalVol"] = np.nan
+            local_vol_list.append(df_T)
+            continue
+        spline = UnivariateSpline(k, w, s=1e-10, k=4)
+        dw_dk = spline.derivative(1)(k)
+        d2w_dk2 = spline.derivative(2)(k)
+        dw_dT = np.gradient(w, T)
+        num = dw_dT
+        denom = (1 - (k * dw_dk) / w + 0.25 * ((-0.25 - 1 / w + k**2 / w**2) * dw_dk**2) + 0.5 * d2w_dk2)
+        sigma2 = np.maximum(num / denom, 1e-6)
+        df_T["LocalVol"] = np.sqrt(sigma2)
+        local_vol_list.append(df_T)
+    return pd.concat(local_vol_list).sort_index()
+
+# ---- 5. Crank-Nicolson PDE ----
+def get_local_vol_interpolator(df):
+    unique_T = df["T"].unique()
+    if len(unique_T) == 1:
+        df_T = df[df["T"] == unique_T[0]].sort_values("STRIKE")
+        return lambda K, T: np.interp(K, df_T["STRIKE"], df_T["LocalVol"])
+    else:
+        pts = np.array([df["STRIKE"], df["T"]]).T
+        return LinearNDInterpolator(pts, df["LocalVol"], fill_value=1e-4)
+
+def crank_nicolson_local_vol(K, T, S0, r, lv_interp, K_grid, N=100, M=100):
+    dt = T / M
+    dK = K_grid[1] - K_grid[0]
+    grid = np.maximum(K_grid - S0, 0)
+    for _ in range(M):
+        sigma = lv_interp(K_grid, T)
+        sigma[np.isnan(sigma)] = 1e-4
+        a = 0.25 * dt * (sigma**2 * K_grid**2 / dK**2 - r * K_grid / dK)
+        b = -0.5 * dt * (sigma**2 * K_grid**2 / dK**2 + r)
+        c = 0.25 * dt * (sigma**2 * K_grid**2 / dK**2 + r * K_grid / dK)
+        lower = -a[2:N-1]
+        main = 1 - b[1:N-1]
+        upper = -c[1:N-2]
+        ab = np.zeros((3, N - 2))
+        ab[0, 1:] = upper
+        ab[1, :] = main
+        ab[2, :-1] = lower
+        rhs = grid.copy()
+        rhs_inner = a[1:N-1] * rhs[0:N-2] + (1 + b[1:N-1]) * rhs[1:N-1] + c[1:N-1] * rhs[2:N]
+        grid[1:N-1] = solve_banded((1, 1), ab, rhs_inner)
+    return np.interp(K, K_grid, grid)
+
+def reprice_options(df, r=0.05):
+    lv_interp = get_local_vol_interpolator(df)
+    prices = []
+    for _, row in df.iterrows():
+        K, T, S = row["STRIKE"], row["T"], row["Cur_Price"]
+        K_grid = np.linspace(0.5 * S, 1.5 * S, 200)
+        p = crank_nicolson_local_vol(K, T, S, r, lv_interp, K_grid, len(K_grid), 100)
+        prices.append(p)
+    df["LocalVol_Price"] = prices
+    df["LocalVol_Error"] = df["Market_Price"] - df["LocalVol_Price"]
+    df["Abs_Error"] = np.abs(df["LocalVol_Error"])
+    df["Rel_Error(%)"] = 100 * df["Abs_Error"] / df["Market_Price"]
+    return df
+
+# ---- 6. Full Pipeline ----
+def full_local_vol_pipeline(df, r=0.05):
+    df["Implied_Vol"] = df.apply(lambda row: newton_raphson_iv(
+        row["Market_Price"], row["Cur_Price"], row["STRIKE"], row["T"], r), axis=1)
+    df["log_moneyness"] = np.log(df["STRIKE"] / df["Cur_Price"])
+    df["total_variance"] = df["Implied_Vol"]**2 * df["T"]
+    k = df["log_moneyness"].values
+    w = df["total_variance"].values
+    df, svi_results = fit_svi(df, k, w)
+    bf_ok = butterfly_arbitrage_check(k, df["SVI_raw_fit"].values)
+    cal_ok = calendar_arbitrage_check(df)
+    df = compute_local_volatility(df, svi_column="SVI_raw_fit")
+    df = reprice_options(df, r)
+    return df, svi_results, bf_ok, cal_ok
+
+# ---- 7. Example Usage ----
+data = {
+    "Cur_Price": [15000, 15000, 15000],
+    "STRIKE": [14800, 15000, 15200],
+    "T": [0.1, 0.1, 0.1],
+    "Market_Price": [250, 160, 90],
+}
+df = pd.DataFrame(data)
+df, svi_params, bf_check, cal_check = full_local_vol_pipeline(df)
+
+# Display Results
+print("Butterfly Arbitrage Free:", bf_check)
+print("Calendar Arbitrage Free:", cal_check)
+print(df)
+
 from scipy.stats import norm
 
 # Black-Scholes Call price
