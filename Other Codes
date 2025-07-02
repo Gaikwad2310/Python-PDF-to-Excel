@@ -1,3 +1,68 @@
+import numpy as np
+import pandas as pd
+from scipy.optimize import minimize
+
+# SVI Jump-Wings parameterization function
+def svi_jumpwings(k, theta, phi, rho, kappa):
+    return theta * (1 + rho * phi * (k - kappa) + np.sqrt((phi * (k - kappa) + rho) ** 2 + 1 - rho ** 2))
+
+# Objective function for least squares
+def svi_loss(params, k, w_obs):
+    theta, phi, rho, kappa = params
+    w_model = svi_jumpwings(k, theta, phi, rho, kappa)
+    return np.mean((w_model - w_obs) ** 2)
+
+# Fit SVI Jump-Wings to data
+def fit_svi_jumpwings(df, spot_price):
+    df = df.copy()
+    df["k"] = np.log(df["K"] / spot_price)
+    df["w"] = (df["iv"] ** 2) * df["T"]
+
+    k = df["k"].values
+    w = df["w"].values
+
+    # Initial guess and bounds
+    theta_0 = np.mean(w)
+    phi_0 = 0.1
+    rho_0 = -0.5
+    kappa_0 = 0.0
+
+    bounds = [
+        (1e-6, 5),     # theta
+        (1e-6, 5),     # phi
+        (-0.999, 0.999),  # rho
+        (-1.0, 1.0)    # kappa
+    ]
+
+    result = minimize(
+        svi_loss,
+        x0=[theta_0, phi_0, rho_0, kappa_0],
+        args=(k, w),
+        bounds=bounds,
+        method='L-BFGS-B'
+    )
+
+    if result.success:
+        theta, phi, rho, kappa = result.x
+        df["w_svi"] = svi_jumpwings(k, theta, phi, rho, kappa)
+        df["iv_svi"] = np.sqrt(df["w_svi"] / df["T"])
+        params = {"theta": theta, "phi": phi, "rho": rho, "kappa": kappa}
+        return df, params
+    else:
+        raise RuntimeError("SVI fitting failed: " + result.message)
+
+# Example input format
+example_df = pd.DataFrame({
+    "K": [9500, 9700, 9900, 10100, 10300, 10500],
+    "T": [0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
+    "iv": [0.18, 0.17, 0.16, 0.165, 0.17, 0.175]
+})
+
+spot_price = 10000
+fitted_df, fitted_params = fit_svi_jumpwings(example_df, spot_price)
+import ace_tools as tools; tools.display_dataframe_to_user(name="SVI Fitted Data", dataframe=fitted_df)
+fitted_params
+
 # Modify the previous code to handle multiple maturities T
 
 def fit_svi_jumpwings_multiple_T(df, spot_price):
