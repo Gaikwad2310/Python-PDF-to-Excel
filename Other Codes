@@ -1,4 +1,28 @@
 import pandas as pd
+import numpy as np
+from scipy.stats import zscore
+
+def remove_outliers_iqr(group, iv_col='implied_vol'):
+    Q1 = group[iv_col].quantile(0.25)
+    Q3 = group[iv_col].quantile(0.75)
+    IQR = Q3 - Q1
+    return group[(group[iv_col] >= Q1 - 1.5 * IQR) & (group[iv_col] <= Q3 + 1.5 * IQR)]
+
+def select_representative_points(group, k_col='STRIKE', n_points=10):
+    group = group.sort_values(k_col)
+    if len(group) <= n_points:
+        return group
+    return group.iloc[np.linspace(0, len(group)-1, n_points, dtype=int)]
+
+def clean_iv_data(df, t_col='T', iv_col='implied_vol', k_col='STRIKE', n_points=10):
+    cleaned_df = []
+    for T_val, group in df.groupby(t_col):
+        group = remove_outliers_iqr(group, iv_col)
+        selected = select_representative_points(group, k_col, n_points)
+        cleaned_df.append(selected)
+    return pd.concat(cleaned_df).reset_index(drop=True)
+
+import pandas as pd
 import itertools
 
 # Example: your dataframe has columns like this
