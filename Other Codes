@@ -1,3 +1,49 @@
+import numpy as np
+import pandas as pd
+from scipy.signal import savgol_filter
+from scipy.interpolate import interp1d
+
+def smart_filter_for_svi(df, spot_price, r=0.05, t_col='T', k_col='STRIKE', iv_col='implied_vol', n_points=20):
+    result = []
+    
+    for T, group in df.groupby(t_col):
+        group = group.copy()
+        
+        # Forward price
+        F = spot_price * np.exp(r * T)
+        group['log_moneyness'] = np.log(group[k_col] / F)
+        
+        # Sort by moneyness
+        group = group.sort_values('log_moneyness')
+        
+        # Apply smoothing filter
+        window = min(11, len(group)) if len(group) % 2 == 1 else min(10, len(group)-1)
+        if window < 5:
+            result.append(group)
+            continue
+        
+        try:
+            smoothed_iv = savgol_filter(group[iv_col].values, window_length=window, polyorder=2)
+        except:
+            result.append(group)
+            continue
+        
+        group['smoothed_iv'] = smoothed_iv
+        group['iv_error'] = np.abs(group[iv_col] - group['smoothed_iv'])
+
+        # Remove points with large deviation (spikes, noise)
+        threshold = 2 * group['iv_error'].std()
+        group = group[group['iv_error'] < threshold]
+
+        # Re-sample evenly across moneyness
+        if len(group) > n_points:
+            idx = np.linspace(0, len(group) - 1, n_points, dtype=int)
+            group = group.iloc[idx]
+        
+        result.append(group.drop(columns=['smoothed_iv', 'iv_error']))
+    
+    return pd.concat(result).reset_index(drop=True)
+
 import pandas as pd
 import numpy as np
 from scipy.stats import zscore
