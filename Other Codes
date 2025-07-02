@@ -1,5 +1,77 @@
 import numpy as np
 import pandas as pd
+from scipy.optimize import minimize
+
+# SVI raw function
+def svi_raw(k, a, b, rho, m, sigma):
+    return a + b * (rho * (k - m) + np.sqrt((k - m)**2 + sigma**2))
+
+# Objective function for least squares
+def svi_objective(params, k, w):
+    a, b, rho, m, sigma = params
+    w_fit = svi_raw(k, a, b, rho, m, sigma)
+    return np.mean((w - w_fit) ** 2)
+
+# Initial guess and bounds
+def initial_guess_and_bounds(k, w):
+    a_init = np.min(w)
+    b_init = (np.max(w) - np.min(w)) / 2
+    rho_init = 0.0
+    m_init = np.mean(k)
+    sigma_init = np.std(k) / 2
+
+    guess = [a_init, b_init, rho_init, m_init, sigma_init]
+    bounds = [
+        (0, 2 * np.max(w)),         # a ≥ 0
+        (1e-5, 10),                 # b > 0
+        (-0.999, 0.999),           # -1 < rho < 1
+        (np.min(k), np.max(k)),    # m in range of k
+        (1e-5, 2 * np.std(k))      # sigma > 0
+    ]
+    return guess, bounds
+
+# Fit SVI for a single expiry
+def fit_svi_raw(k, iv, T):
+    w = (iv ** 2) * T
+    guess, bounds = initial_guess_and_bounds(k, w)
+    result = minimize(svi_objective, guess, args=(k, w), bounds=bounds, method='L-BFGS-B')
+
+    if result.success:
+        a, b, rho, m, sigma = result.x
+        return a, b, rho, m, sigma, result.fun
+    else:
+        return np.nan, np.nan, np.nan, np.nan, np.nan, np.inf
+
+# Main function
+def fit_svi_raw_all_expiries(df, spot_price, r=0.05):
+    results = []
+
+    for T, group in df.groupby('T'):
+        group = group.copy()
+        F = spot_price * np.exp(r * T)
+        group['log_moneyness'] = np.log(group['STRIKE'] / F)
+
+        a, b, rho, m, sigma, error = fit_svi_raw(
+            group['log_moneyness'].values,
+            group['implied_vol'].values,
+            T
+        )
+
+        results.append({
+            'T': T,
+            'a': a,
+            'b': b,
+            'rho': rho,
+            'm': m,
+            'sigma': sigma,
+            'svi_error': error
+        })
+
+    return pd.DataFrame(results)
+
+
+import numpy as np
+import pandas as pd
 from scipy.signal import savgol_filter
 from scipy.interpolate import interp1d
 
