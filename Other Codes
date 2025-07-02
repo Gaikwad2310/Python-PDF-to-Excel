@@ -2,17 +2,14 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-# SVI raw function
 def svi_raw(k, a, b, rho, m, sigma):
     return a + b * (rho * (k - m) + np.sqrt((k - m)**2 + sigma**2))
 
-# Objective function for least squares
 def svi_objective(params, k, w):
     a, b, rho, m, sigma = params
     w_fit = svi_raw(k, a, b, rho, m, sigma)
     return np.mean((w - w_fit) ** 2)
 
-# Initial guess and bounds
 def initial_guess_and_bounds(k, w):
     a_init = np.min(w)
     b_init = (np.max(w) - np.min(w)) / 2
@@ -30,44 +27,42 @@ def initial_guess_and_bounds(k, w):
     ]
     return guess, bounds
 
-# Fit SVI for a single expiry
-def fit_svi_raw(k, iv, T):
-    w = (iv ** 2) * T
-    guess, bounds = initial_guess_and_bounds(k, w)
-    result = minimize(svi_objective, guess, args=(k, w), bounds=bounds, method='L-BFGS-B')
-
-    if result.success:
-        a, b, rho, m, sigma = result.x
-        return a, b, rho, m, sigma, result.fun
-    else:
-        return np.nan, np.nan, np.nan, np.nan, np.nan, np.inf
-
-# Main function
 def fit_svi_raw_all_expiries(df, spot_price, r=0.05):
-    results = []
+    df = df.copy()
+    svi_params = []
 
     for T, group in df.groupby('T'):
         group = group.copy()
         F = spot_price * np.exp(r * T)
-        group['log_moneyness'] = np.log(group['STRIKE'] / F)
+        k = np.log(group['STRIKE'] / F)
+        iv = group['implied_vol'].values
+        w = (iv ** 2) * T
 
-        a, b, rho, m, sigma, error = fit_svi_raw(
-            group['log_moneyness'].values,
-            group['implied_vol'].values,
-            T
-        )
+        guess, bounds = initial_guess_and_bounds(k, w)
+        result = minimize(svi_objective, guess, args=(k, w), bounds=bounds, method='L-BFGS-B')
 
-        results.append({
-            'T': T,
-            'a': a,
-            'b': b,
-            'rho': rho,
-            'm': m,
-            'sigma': sigma,
-            'svi_error': error
-        })
+        if result.success:
+            a, b, rho, m, sigma = result.x
+            fitted_w = svi_raw(k, a, b, rho, m, sigma)
+            fitted_iv = np.sqrt(fitted_w / T)
+            abs_diff = np.abs(iv - fitted_iv)
 
-    return pd.DataFrame(results)
+            df.loc[group.index, 'log_moneyness'] = k
+            df.loc[group.index, 'svi_total_variance'] = fitted_w
+            df.loc[group.index, 'svi_iv'] = fitted_iv
+            df.loc[group.index, 'svi_abs_error'] = abs_diff
+            df.loc[group.index, 'a'] = a
+            df.loc[group.index, 'b'] = b
+            df.loc[group.index, 'rho'] = rho
+            df.loc[group.index, 'm'] = m
+            df.loc[group.index, 'sigma'] = sigma
+            df.loc[group.index, 'svi_fit_error'] = result.fun
+        else:
+            # Fill with NaN if fitting fails
+            df.loc[group.index, ['log_moneyness', 'svi_total_variance', 'svi_iv', 'svi_abs_error',
+                                 'a', 'b', 'rho', 'm', 'sigma', 'svi_fit_error']] = np.nan
+
+    return df.reset_index(drop=True)
 
 
 import numpy as np
