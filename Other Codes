@@ -1,3 +1,31 @@
+import pandas as pd
+import itertools
+
+# Example: your dataframe has columns like this
+# 'T', 'K', 'a', 'b', 'rho', 'm', 'sigma'
+
+# Sample input
+# df = pd.read_csv('your_data.csv')
+
+# Extract unique (T, parameters) pairs
+t_param_cols = ['T', 'a', 'b', 'rho', 'm', 'sigma']
+unique_t_params = df[t_param_cols].drop_duplicates()
+
+# Extract unique K values
+unique_K = df['K'].unique()
+
+# Create a DataFrame from cartesian product of K and T-parameter sets
+result = pd.DataFrame([
+    {**dict(row), 'K': k}
+    for _, row in unique_t_params.iterrows()
+    for k in unique_K
+])
+
+# Reorder columns if needed
+result = result[['T', 'K', 'a', 'b', 'rho', 'm', 'sigma']]
+
+print(result.head())
+
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
