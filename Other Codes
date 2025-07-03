@@ -1,3 +1,97 @@
+import numpy as np
+import pandas as pd
+from scipy.interpolate import griddata
+from tqdm import tqdm
+
+def crank_nicolson_local_vol(S0, K, T, r, local_vol_func, S_grid, N, M):
+    dt = T / N
+    dS = S_grid[1] - S_grid[0]
+
+    # Payoff at maturity
+    V = np.maximum(S_grid - K, 0)
+    
+    for n in range(N):
+        t = T - n * dt
+        sigma = local_vol_func(S_grid, t)
+        alpha = 0.25 * dt * ((sigma**2) * (S_grid**2)) / (dS**2)
+        beta = 0.25 * dt * r * S_grid / dS
+
+        A = -alpha + beta
+        B = 1 + dt * r / 2 + alpha + alpha
+        C = -alpha - beta
+
+        M1 = np.zeros((M, M))
+        M2 = np.zeros((M, M))
+
+        for i in range(1, M-1):
+            M1[i, i-1] = -A[i]
+            M1[i, i]   = B[i]
+            M1[i, i+1] = -C[i]
+
+            M2[i, i-1] = A[i]
+            M2[i, i]   = 2 - B[i]
+            M2[i, i+1] = C[i]
+
+        # Boundary conditions
+        M1[0, 0] = M1[-1, -1] = 1
+        M2[0, 0] = M2[-1, -1] = 1
+
+        rhs = M2 @ V
+        rhs[0] = 0  # V(0,t)=0 for call
+        rhs[-1] = S_grid[-1] - K * np.exp(-r * (T - t))
+
+        V = np.linalg.solve(M1, rhs)
+
+    return np.interp(S0, S_grid, V)
+
+
+def reprice_options_using_local_vol(df, r=0.05, N=100, M=200):
+    results = []
+    strikes = df['STRIKE'].values
+    spot_price = df['Cur_Price'].values[0]  # assuming same spot for all
+    T_values = df['T'].values
+    local_vols = df['local_vol'].values
+
+    # Build (K,T) -> vol interpolation
+    points = np.array(list(zip(strikes, T_values)))
+    values = local_vols
+    K_grid = np.linspace(0.5 * spot_price, 1.5 * spot_price, M)
+
+    def local_vol_func(S, t):
+        K_vals = np.array(S)
+        T_vals = np.full_like(K_vals, t)
+        return griddata(points, values, (K_vals, T_vals), method='linear', fill_value=np.nan_to_num(values).mean())
+
+    S_grid = np.linspace(0.5 * spot_price, 1.5 * spot_price, M)
+
+    for _, row in tqdm(df.iterrows(), total=len(df)):
+        K = row['STRIKE']
+        T = row['T']
+        market_price = row['Call_Price']
+
+        model_price = crank_nicolson_local_vol(
+            S0=spot_price,
+            K=K,
+            T=T,
+            r=r,
+            local_vol_func=local_vol_func,
+            S_grid=S_grid,
+            N=N,
+            M=M
+        )
+
+        results.append({
+            'STRIKE': K,
+            'T': T,
+            'local_vol': row['local_vol'],
+            'Call_Price': market_price,
+            'ModelPrice': model_price,
+            'AbsoluteError': abs(model_price - market_price),
+            'RelativeError(%)': 100 * abs(model_price - market_price) / market_price if market_price != 0 else np.nan
+        })
+
+    return pd.DataFrame(results)
+
 # Re-import required packages after environment reset
 import numpy as np
 import pandas as pd
