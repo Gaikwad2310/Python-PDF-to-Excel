@@ -1,3 +1,153 @@
+import numpy as np
+import pandas as pd
+from scipy.optimize import curve_fit
+import matplotlib.pyplot as plt
+
+# Define the better IV model (tanh + quadratic)
+def better_iv_model(k, alpha, beta, gamma, delta, m):
+    return alpha + beta * np.tanh(gamma * (k - m)) + delta * (k - m)**2
+
+# Step 1: Fit the IV smile for each maturity
+def fit_better_iv_model_with_params(df, spot_price):
+    df = df.copy()
+    df["k"] = np.log(df["K"] / spot_price)
+    df["w"] = (df["iv"] ** 2) * df["T"]
+    results = []
+
+    for T_val in sorted(df["T"].unique()):
+        sub_df = df[df["T"] == T_val]
+        k = sub_df["k"].values
+        w = sub_df["w"].values
+
+        alpha_0 = np.mean(w)
+        beta_0 = 0.1
+        gamma_0 = 5.0
+        delta_0 = 0.1
+        m_0 = np.mean(k)
+        p0 = [alpha_0, beta_0, gamma_0, delta_0, m_0]
+
+        bounds = ([-10, -10, 0.1, 0, min(k) - 1],
+                  [10, 10, 50, 10, max(k) + 1])
+
+        try:
+            popt, _ = curve_fit(better_iv_model, k, w, p0=p0, bounds=bounds, maxfev=5000)
+            alpha, beta, gamma, delta, m = popt
+            w_fit = better_iv_model(k, alpha, beta, gamma, delta, m)
+            iv_fit = np.sqrt(np.maximum(w_fit / T_val, 0))
+
+            sub_df = sub_df.copy()
+            sub_df["w_fit"] = w_fit
+            sub_df["iv_fit"] = iv_fit
+            sub_df["alpha"] = alpha
+            sub_df["beta"] = beta
+            sub_df["gamma"] = gamma
+            sub_df["delta"] = delta
+            sub_df["m"] = m
+
+            results.append(sub_df)
+        except RuntimeError as e:
+            print(f"Fitting failed for T={T_val}: {e}")
+
+    return pd.concat(results, ignore_index=True)
+
+# Step 2: Compute local volatility using Dupire formula
+def compute_local_volatility(df, spot_price):
+    df = df.copy()
+    df["k"] = np.log(df["K"] / spot_price)
+    df["w"] = df["iv_fit"] ** 2 * df["T"]
+
+    df["dw_dT"] = np.nan
+    df["dw_dk"] = np.nan
+    df["d2w_dk2"] = np.nan
+    df["local_vol"] = np.nan
+
+    for T_val in sorted(df["T"].unique()):
+        sub_df = df[df["T"] == T_val].copy()
+        k = sub_df["k"].values
+        w = sub_df["w"].values
+
+        sort_idx = np.argsort(k)
+        k_sorted = k[sort_idx]
+        w_sorted = w[sort_idx]
+
+        dw_dk = np.gradient(w_sorted, k_sorted)
+        d2w_dk2 = np.gradient(dw_dk, k_sorted)
+
+        T_eps = 1e-4
+        T_up = T_val + T_eps
+        T_down = T_val - T_eps
+
+        df_T_up = sub_df.copy()
+        df_T_down = sub_df.copy()
+
+        df_T_up["w"] = df_T_up["iv_fit"] ** 2 * T_up
+        df_T_down["w"] = df_T_down["iv_fit"] ** 2 * T_down
+
+        dw_dT = (df_T_up["w"].values - df_T_down["w"].values) / (2 * T_eps)
+
+        numerator = dw_dT
+        denominator = (1 - k_sorted * dw_dk / w_sorted) ** 2 + 0.5 * d2w_dk2 * w_sorted
+
+        with np.errstate(divide='ignore', invalid='ignore'):
+            local_var = np.where(denominator > 0, numerator / denominator, np.nan)
+            local_vol = np.sqrt(np.maximum(local_var, 0))
+
+        idx = sub_df.index[sort_idx]
+        df.loc[idx, "dw_dT"] = dw_dT
+        df.loc[idx, "dw_dk"] = dw_dk
+        df.loc[idx, "d2w_dk2"] = d2w_dk2
+        df.loc[idx, "local_vol"] = local_vol
+
+    return df
+
+# Step 3: Plot fitted IV curve
+def plot_smooth_fitted_iv_by_strike(df, spot_price):
+    df = df.copy()
+    unique_T = sorted(df["T"].unique())
+
+    plt.figure(figsize=(12, 6))
+    for T_val in unique_T:
+        sub_df = df[df["T"] == T_val].iloc[0]
+        alpha = sub_df["alpha"]
+        beta = sub_df["beta"]
+        gamma = sub_df["gamma"]
+        delta = sub_df["delta"]
+        m = sub_df["m"]
+
+        K_min, K_max = df["K"].min(), df["K"].max()
+        K_vals = np.linspace(K_min, K_max, 100)
+        k_vals = np.log(K_vals / spot_price)
+
+        w_fit = better_iv_model(k_vals, alpha, beta, gamma, delta, m)
+        iv_fit = np.sqrt(np.maximum(w_fit / T_val, 0))
+
+        K_market = df[df["T"] == T_val]["K"]
+        iv_market = df[df["T"] == T_val]["iv"]
+
+        plt.plot(K_vals, iv_fit, '-', label=f"Fitted IV (T={T_val})")
+        plt.plot(K_market, iv_market, 'o', label=f"Market IV (T={T_val})")
+
+    plt.xlabel("Strike Price (K)")
+    plt.ylabel("Implied Volatility")
+    plt.title("Fitted vs Market IV")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+# Sample data
+extended_df = pd.DataFrame({
+    "K": [9500, 9700, 9900, 10100, 10300, 10500]*2,
+    "T": [0.2]*6 + [0.4]*6,
+    "iv": [0.18, 0.17, 0.16, 0.165, 0.17, 0.175, 0.19, 0.18, 0.17, 0.172, 0.176, 0.18]
+})
+spot_price = 10000
+
+# Run everything
+fitted_df = fit_better_iv_model_with_params(extended_df, spot_price)
+local_vol_df = compute_local_volatility(fitted_df, spot_price)
+plot_smooth_fitted_iv_by_strike(fitted_df, spot_price)
+
 # Define the new model: logistic-tanh + quadratic
 def better_iv_model(k, alpha, beta, gamma, delta, m):
     return alpha + beta * np.tanh(gamma * (k - m)) + delta * (k - m)**2
