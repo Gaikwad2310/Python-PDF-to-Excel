@@ -1,4 +1,13 @@
 sigma_t = sigma_interp(S_paths, t * np.ones_like(S_paths))
+
+# Handle case where interpolation returns None or object dtype
+if sigma_t is None or isinstance(sigma_t, float):
+    sigma_t = np.full_like(S_paths, np.nanmean(local_vols), dtype=float)
+else:
+    sigma_t = np.array(sigma_t, dtype=float)
+    sigma_t[np.isnan(sigma_t)] = np.nanmean(local_vols)
+
+sigma_t = sigma_interp(S_paths, t * np.ones_like(S_paths))
 sigma_t = np.array(sigma_t, dtype=float)
 sigma_t = np.nan_to_num(sigma_t, nan=np.nanmean(local_vols))
 
