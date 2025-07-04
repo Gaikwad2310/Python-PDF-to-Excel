@@ -1,3 +1,98 @@
+import numpy as np
+import pandas as pd
+from scipy.interpolate import CubicSpline
+
+# Custom total variance model
+def better_iv_model(k, alpha, beta, gamma, delta, m):
+    return alpha + beta * np.tanh(gamma * (k - m)) + delta * (k - m)**2
+
+# Spline interpolators for fitted parameters
+def create_spline_dict(param_df):
+    T_vals = param_df["T"].values
+    spline_dict = {
+        "alpha": CubicSpline(T_vals, param_df["alpha"].values),
+        "beta": CubicSpline(T_vals, param_df["beta"].values),
+        "gamma": CubicSpline(T_vals, param_df["gamma"].values),
+        "delta": CubicSpline(T_vals, param_df["delta"].values),
+        "m": CubicSpline(T_vals, param_df["m"].values)
+    }
+    return spline_dict
+
+# Analytic partial derivative w.r.t. T
+def partial_T_analytical(k, T, spline_dict):
+    a = spline_dict["alpha"](T)
+    b = spline_dict["beta"](T)
+    g = spline_dict["gamma"](T)
+    d = spline_dict["delta"](T)
+    m = spline_dict["m"](T)
+
+    da = spline_dict["alpha"].derivative()(T)
+    db = spline_dict["beta"].derivative()(T)
+    dg = spline_dict["gamma"].derivative()(T)
+    dd = spline_dict["delta"].derivative()(T)
+    dm = spline_dict["m"].derivative()(T)
+
+    z = k - m
+    tanh_term = np.tanh(g * z)
+    sech2 = 1 - tanh_term**2  # sech^2(x) = 1 - tanh^2(x)
+
+    dw_dT = (
+        da
+        + db * tanh_term
+        + b * sech2 * (dg * z - g * dm)
+        + dd * z**2
+        - 2 * d * z * dm
+    )
+    return dw_dT
+
+# Total variance function using splines
+def total_variance(k, T, spline_dict):
+    a = spline_dict["alpha"](T)
+    b = spline_dict["beta"](T)
+    g = spline_dict["gamma"](T)
+    d = spline_dict["delta"](T)
+    m = spline_dict["m"](T)
+    return better_iv_model(k, a, b, g, d, m)
+
+# Numerical derivatives w.r.t. k
+def partial_k(k, T, spline_dict, epsilon=1e-4):
+    w_plus = total_variance(k + epsilon, T, spline_dict)
+    w_minus = total_variance(k - epsilon, T, spline_dict)
+    return (w_plus - w_minus) / (2 * epsilon)
+
+def partial_kk(k, T, spline_dict, epsilon=1e-4):
+    w_plus = total_variance(k + epsilon, T, spline_dict)
+    w = total_variance(k, T, spline_dict)
+    w_minus = total_variance(k - epsilon, T, spline_dict)
+    return (w_plus - 2 * w + w_minus) / (epsilon**2)
+
+# Dupire local volatility
+def dupire_local_vol(K, S, T, spline_dict, r):
+    k = np.log(K / S)
+    w = total_variance(k, T, spline_dict)
+    w_T = partial_T_analytical(k, T, spline_dict)
+    w_k = partial_k(k, T, spline_dict)
+    w_kk = partial_kk(k, T, spline_dict)
+
+    numerator = w_T
+    denominator = 1 - (k * w_k / w) + 0.25 * ((-0.25 + 1 / w + (k**2) / (w**2)) * (w_k**2)) + 0.5 * w_kk
+
+    if denominator <= 0 or numerator <= 0:
+        return np.nan
+
+    return np.sqrt(numerator / denominator)
+
+# Apply to dataframe
+def compute_local_vol_dataframe(df, spline_dict, r):
+    local_vols = []
+    for _, row in df.iterrows():
+        S, K, T = row['Spot'], row['Strike'], row['T']
+        lv = dupire_local_vol(K, S, T, spline_dict, r)
+        local_vols.append(lv)
+    df['LocalVol'] = local_vols
+    return df
+
+
 def compute_dw_dT(df):
     df = df.copy()
     
