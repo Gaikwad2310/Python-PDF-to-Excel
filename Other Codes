@@ -1,3 +1,40 @@
+def compute_dw_dT(df):
+    df = df.copy()
+    
+    # Sort by k and T for proper differencing
+    df = df.sort_values(['k', 'T']).reset_index(drop=True)
+    
+    # Initialize the column
+    df['dw_dT'] = np.nan
+
+    # Group by k to approximate ∂w/∂T along T direction for each fixed k
+    for k_val, group in df.groupby('k'):
+        group = group.sort_values('T')
+        w_vals = group['w_fit'].values
+        T_vals = group['T'].values
+
+        # Use central differences where possible, forward/backward at edges
+        dw_dT = np.zeros_like(w_vals)
+
+        for i in range(len(T_vals)):
+            if 0 < i < len(T_vals) - 1:
+                # Central difference
+                dw_dT[i] = (w_vals[i+1] - w_vals[i-1]) / (T_vals[i+1] - T_vals[i-1])
+            elif i == 0 and len(T_vals) > 1:
+                # Forward difference
+                dw_dT[i] = (w_vals[i+1] - w_vals[i]) / (T_vals[i+1] - T_vals[i])
+            elif i == len(T_vals) - 1 and len(T_vals) > 1:
+                # Backward difference
+                dw_dT[i] = (w_vals[i] - w_vals[i-1]) / (T_vals[i] - T_vals[i-1])
+            else:
+                # Not enough points
+                dw_dT[i] = np.nan
+
+        df.loc[group.index, 'dw_dT'] = dw_dT
+
+    return df
+
+
 import numpy as np
 import pandas as pd
 from scipy.interpolate import griddata
