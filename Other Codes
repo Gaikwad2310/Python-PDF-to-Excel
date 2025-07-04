@@ -1,3 +1,41 @@
+from scipy.interpolate import LinearNDInterpolator
+import numpy as np
+import pandas as pd
+
+def monte_carlo_local_vol(df, n_paths=10000, n_steps=100, r=0.05):
+    df = df.copy()
+    S0 = df["Cur_Price"].iloc[0]
+
+    # Set up interpolator: sigma = f(S, t)
+    interp_points = [(row["STRIKE"], row["T"]) for _, row in df.iterrows()]
+    local_vols = df["local_vol"].values
+    sigma_interp = LinearNDInterpolator(interp_points, local_vols)
+
+    model_prices = []
+    for idx, row in df.iterrows():
+        K = row["STRIKE"]
+        T = row["T"]
+
+        dt = T / n_steps
+        S_paths = np.full(n_paths, S0)
+
+        for step in range(n_steps):
+            t = step * dt
+            sigma_t = sigma_interp(S_paths, t * np.ones_like(S_paths))
+            sigma_t = np.nan_to_num(sigma_t, nan=np.mean(local_vols))  # fallback if outside domain
+            dW = np.random.normal(0, np.sqrt(dt), size=n_paths)
+            S_paths *= np.exp((r - 0.5 * sigma_t**2) * dt + sigma_t * dW)
+
+        payoff = np.maximum(S_paths - K, 0)
+        model_price = np.exp(-r * T) * np.mean(payoff)
+        model_prices.append(model_price)
+
+    df["ModelPrice"] = model_prices
+    df["AbsoluteError"] = np.abs(df["ModelPrice"] - df["Call_price"])
+    df["RelativeError(%)"] = 100 * df["AbsoluteError"] / df["Call_price"]
+
+    return df
+
 import numpy as np
 import pandas as pd
 from scipy.interpolate import CubicSpline
