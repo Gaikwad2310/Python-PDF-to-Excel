@@ -1,3 +1,7 @@
+sigma_t = sigma_interp(S_paths, t * np.ones_like(S_paths))
+sigma_t = np.array(sigma_t, dtype=float)
+sigma_t = np.nan_to_num(sigma_t, nan=np.nanmean(local_vols))
+
 from scipy.interpolate import LinearNDInterpolator
 import numpy as np
 import pandas as pd
