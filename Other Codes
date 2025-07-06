@@ -1,4 +1,82 @@
-    for step in range(n_steps):
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+from scipy.interpolate import LinearNDInterpolator
+
+def monte_carlo_local_vol(df, n_paths=10000, n_steps=100, r=0.05, verbose=True, plot_every=25):
+    df = df.copy()
+    s0 = df["S"].iloc[0]
+
+    # Build interpolator for sigma(S, T)
+    interp_points = [(row["K"], row["T"]) for _, row in df.iterrows()]
+    local_vols = df["local_vol"].values
+    sigma_interp = LinearNDInterpolator(interp_points, local_vols)
+
+    model_prices = []
+
+    for idx, row in tqdm(df.iterrows(), total=len(df)):
+        K = row["K"]
+        T = row["T"]
+        dt = T / n_steps
+        s_paths = np.full(n_paths, s0, dtype=float)
+
+        for step in range(n_steps):
+            t = step * dt
+            sigma_t = sigma_interp(s_paths, t * np.ones_like(s_paths))
+
+            # Handle invalid interpolation values
+            if sigma_t is None or isinstance(sigma_t, float):
+                sigma_t = np.full_like(s_paths, np.nanmean(local_vols), dtype=float)
+            else:
+                sigma_t = np.array(sigma_t, dtype=float)
+                sigma_t[np.isnan(sigma_t)] = np.nanmean(local_vols)
+
+            # Print and plot for understanding
+            if verbose and step % plot_every == 0:
+                print(f"\n--- Step {step}/{n_steps} ---")
+                print(f"Time: {t:.4f}")
+                print(f"Mean sigma_t: {np.mean(sigma_t):.4f}")
+                print(f"Sample S_paths: {s_paths[:5]}")
+                print(f"Sample sigma_t: {sigma_t[:5]}")
+
+                plt.figure(figsize=(12, 4))
+
+                plt.subplot(1, 2, 1)
+                plt.hist(sigma_t, bins=30, color='skyblue', edgecolor='k')
+                plt.title(f'Local Volatility Distribution at t={t:.2f}')
+                plt.xlabel('σ_local')
+                plt.ylabel('Frequency')
+
+                plt.subplot(1, 2, 2)
+                plt.hist(s_paths, bins=30, color='lightgreen', edgecolor='k')
+                plt.title(f'Stock Path Distribution at t={t:.2f}')
+                plt.xlabel('S')
+                plt.ylabel('Frequency')
+
+                plt.tight_layout()
+                plt.show()
+
+            # Evolve path using log-Euler discretization
+            dw = np.random.normal(0, np.sqrt(dt), size=n_paths)
+            s_paths *= np.exp((r - 0.5 * sigma_t**2) * dt + sigma_t * dw)
+
+        # Payoff and discount
+        payoff = np.maximum(s_paths - K, 0)
+        model_price = np.exp(-r * T) * np.mean(payoff)
+        model_prices.append(model_price)
+
+    # Add prices to DataFrame
+    df["ModelPrice"] = model_prices
+
+    # Optional: Compute pricing errors if call_price exists
+    # if "call_price" in df.columns:
+    #     df["AbsoluteError"] = np.abs(df["ModelPrice"] - df["call_price"])
+    #     df["RelativeError(%)"] = 100 * df["AbsoluteError"] / df["call_price"]
+
+    return df
+
+for step in range(n_steps):
         t = step * dt
         sigma_t = sigma_interp(s_paths, t * np.ones_like(s_paths))
 
