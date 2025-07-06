@@ -1,3 +1,44 @@
+    for step in range(n_steps):
+        t = step * dt
+        sigma_t = sigma_interp(s_paths, t * np.ones_like(s_paths))
+
+        # Handle interpolation failures
+        if sigma_t is None or isinstance(sigma_t, float):
+            sigma_t = np.full_like(s_paths, np.nanmean(local_vols), dtype=float)
+        else:
+            sigma_t = np.array(sigma_t, dtype=float)
+            sigma_t[np.isnan(sigma_t)] = np.nanmean(local_vols)
+
+        # Sample output for debugging and understanding
+        if verbose and step % plot_every == 0:
+            print(f"\n--- Step {step}/{n_steps} ---")
+            print(f"Time: {t:.4f}")
+            print(f"Mean sigma_t: {np.mean(sigma_t):.4f}")
+            print(f"Sample S_paths: {s_paths[:5]}")
+            print(f"Sample sigma_t: {sigma_t[:5]}")
+
+            # Plot distribution of sigma and S_paths
+            plt.figure(figsize=(12, 4))
+
+            plt.subplot(1, 2, 1)
+            plt.hist(sigma_t, bins=30, color='skyblue', edgecolor='k')
+            plt.title(f'Local Volatility Distribution at t={t:.2f}')
+            plt.xlabel('σ_local')
+            plt.ylabel('Frequency')
+
+            plt.subplot(1, 2, 2)
+            plt.hist(s_paths, bins=30, color='lightgreen', edgecolor='k')
+            plt.title(f'Stock Path Distribution at t={t:.2f}')
+            plt.xlabel('S')
+            plt.ylabel('Frequency')
+
+            plt.tight_layout()
+            plt.show()
+
+        # Brownian motion step
+        dw = np.random.normal(0, np.sqrt(dt), size=n_paths)
+        s_paths *= np.exp((r - 0.5 * sigma_t**2) * dt + sigma_t * dw)
+
 sigma_t = sigma_interp(S_paths, t * np.ones_like(S_paths))
 
 # Handle case where interpolation returns None or object dtype
