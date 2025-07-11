@@ -1,3 +1,97 @@
+σ 
+loc
+2
+
+ (K,T)= 
+(1− 
+w
+k
+
+  
+∂k
+∂w
+
+ + 
+4
+1
+
+ (− 
+4
+1
+
+ − 
+w
+1
+
+ + 
+w 
+2
+ 
+k 
+2
+ 
+
+ )( 
+∂k
+∂w
+
+ ) 
+2
+ + 
+2
+1
+
+  
+∂k 
+2
+ 
+∂ 
+2
+ w
+
+ )
+∂T
+∂w
+
+ 
+
+ 
+Where:
+
+𝑤
+(
+𝑘
+,
+𝑇
+)
+=
+𝜎
+imp
+2
+(
+𝑘
+,
+𝑇
+)
+⋅
+𝑇
+w(k,T)=σ 
+imp
+2
+
+ (k,T)⋅T is the total implied variance
+
+𝑘
+=
+log
+⁡
+(
+𝐾
+/
+𝐹
+)
+k=log(K/F), log-moneyness
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
