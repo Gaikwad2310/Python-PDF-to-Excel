@@ -1,3 +1,6 @@
+cmd.exe /k "C:\Users\YourUsername\miniforge3\Scripts\activate.bat myenv && streamlit run C:\path\to\your\app.py"
+
+
 import numpy as np
 import matplotlib.pyplot as plt
 
